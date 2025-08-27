@@ -1,885 +1,156 @@
-# TRLC Platform Library v1.0.0
-
+# TRLC Platform
 ![Linux GCC](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Ubuntu%2022.04%20GCC%2012&label=Linux%20GCC)
-![Linux Clang](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Ubuntu%2022.04%20Clang%2015&label=Linux%20Clang)
 ![macOS Clang](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20macOS%2013%20Clang&label=macOS%20Clang)
 ![Windows MSVC](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Windows%202022%20MSVC%202022&label=Windows%20MSVC)
-![Windows MinGW](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Windows%202022%20MinGW&label=Windows%20MinGW)
-
 [![C++ Version](https://img.shields.io/badge/C%2B%2B-17%2F20%2F23-blue)](#requirements)
-[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/tranglecong/platform/blob/main/LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#platform-support)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Header Only](https://img.shields.io/badge/header--only-yes-success)](#installation)
-[![CMake](https://img.shields.io/badge/CMake-3.15+-blue)](https://cmake.org/)
 
-A modern, header-only C++ library for compile-time platform detection and abstraction. TRLC Platform provides zero-overhead platform detection, feature-based conditional compilation, and adaptive code selection for cross-platform C++ development.
-
-> **🚀 Replace traditional `#ifdef` macros with modern, type-safe, compile-time API calls**
-
-## Why TRLC Platform?
-
-Traditional platform detection relies on fragile preprocessor macros:
+Modern C++ library for compile-time platform detection and abstraction. Replace fragile `#ifdef` macros with type-safe, zero-overhead API calls.
 
 ```cpp
-// ❌ Traditional approach - fragile and error-prone
+// ❌ Traditional approach
 #if defined(__GNUC__) || defined(__clang__)
     result = __builtin_popcount(value);
 #elif defined(_MSC_VER)
     result = __popcnt(value);
-#else
-    // Fallback implementation
 #endif
-```
 
-TRLC Platform provides a modern, type-safe alternative:
-
-```cpp
-// ✅ TRLC Platform approach - type-safe and intuitive
-if constexpr (trlc::platform::getCompilerType() == trlc::platform::CompilerType::gcc ||
-              trlc::platform::getCompilerType() == trlc::platform::CompilerType::clang) {
+// ✅ TRLC Platform approach  
+if constexpr (getCompilerType() == CompilerType::gcc) {
     result = __builtin_popcount(value);
-} else if constexpr (trlc::platform::getCompilerType() == trlc::platform::CompilerType::msvc) {
+} else if constexpr (getCompilerType() == CompilerType::msvc) {
     result = __popcnt(value);
 }
 ```
 
-## Table of Contents
-
-- [Why TRLC Platform?](#why-trlc-platform)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Platform Support](#platform-support)
-- [Requirements](#requirements)
-- [Installation](#installation)
-  - [Header-Only Installation](#header-only-installation)
-  - [CMake Integration](#cmake-integration)
-  - [Package Managers](#package-managers)
-- [Usage Examples](#usage-examples)
-  - [Basic Platform Detection](#basic-platform-detection)
-  - [Advanced Feature Detection](#advanced-feature-detection)
-  - [Integration Patterns](#integration-patterns)
-- [API Reference](#api-reference)
-- [Performance](#performance)
-- [Building and Testing](#building-and-testing)
-- [Troubleshooting](#troubleshooting)
-- [Examples](#examples)
-- [Contributing](#contributing)
-- [License](#license)
-
 ## Features
 
-### ✨ Core Capabilities
-
-- **🔍 Comprehensive Platform Detection**
-  - Operating system detection (Windows, Linux, macOS, BSD variants)
-  - Compiler detection (GCC, Clang, MSVC, Intel)
-  - Architecture detection (x86, x64, ARM, ARM64, MIPS, PowerPC)
-  - C++ standard detection (C++17/20/23)
-
-- **⚡ Zero Runtime Overhead**
-  - Compile-time detection with `constexpr` functions
-  - Template-based conditional compilation
-  - Dead code elimination for unused platform paths
-  - Assembly output verification of optimizations
-
-- **🧬 Advanced Template Metaprogramming**
-  - SFINAE-based conditional template instantiation
-  - Variadic template functions for multi-feature requirements
-  - Type traits for platform-specific behavior
-  - Template specializations for optimal code generation
-
-- **🛠️ Feature Detection**
-  - Language features (exceptions, RTTI, threads, atomic operations)
-  - Runtime CPU features (SSE, AVX, NEON, hardware acceleration)
-  - Compiler features (intrinsics, attributes, diagnostics)
-  - Build configuration detection (debug/release, sanitizers)
-
-- **📦 Header-Only Design**
-  - No external dependencies beyond standard library
-  - Easy integration into any C++ project
-  - CMake integration with feature detection
-  - Cross-compiler compatibility
-
-### 🎯 Adaptive Programming Support
-
-- **Conditional Compilation**: Write code that adapts automatically to target platform
-- **Feature-Based Selection**: Choose algorithms based on available hardware/software features
-- **Compiler Optimization**: Leverage compiler-specific intrinsics and optimizations
-- **Memory Management**: Platform-optimized alignment and allocation strategies
-- **Error Handling**: Adaptive error handling based on available features
+- **Zero Runtime Overhead** - All detection happens at compile time using `constexpr`
+- **Type-Safe APIs** - Replace error-prone `#ifdef` with modern C++ templates  
+- **Comprehensive Detection** - OS, compiler, architecture, CPU features, C++ standard
+- **Header-Only** - No compilation required, just include and use
+- **Cross-Platform** - Windows, Linux, macOS, BSD on GCC, Clang, MSVC
 
 ## Quick Start
 
-### 1. Include the Library
+### Install
+```cpp
+// Just include the header
+#include "trlc/platform/core.hpp"
+```
 
+### Basic Usage
 ```cpp
 #include "trlc/platform/core.hpp"
+using namespace trlc::platform;
 
 int main() {
-    // Get comprehensive platform information
-    auto platform = trlc::platform::getPlatformReport();
-    std::cout << platform.getBriefSummary() << std::endl;
-    // Output: "gcc 11.4 on Linux x86_64 (64-bit)"
+    // Platform detection (compile-time)
+    constexpr auto os = getOperatingSystem();
+    constexpr auto compiler = getCompilerType();
+    constexpr auto arch = getCpuArchitecture();
+    
+    if constexpr (os == OperatingSystem::windows) {
+        // Windows-specific code
+    } else if constexpr (os == OperatingSystem::linux_generic) {
+        // Linux-specific code  
+    }
+    
+    // Feature detection
+    if constexpr (hasFeature<LanguageFeature::exceptions>()) {
+        try {
+            riskyOperation();
+        } catch (...) {
+            handleError();
+        }
+    } else {
+        // No exception support - use error codes
+        auto result = safeOperation();
+    }
+    
+    // Runtime CPU features
+    initializePlatform(); // Call once at startup
+    if (hasRuntimeFeature(RuntimeFeature::avx)) {
+        // Use AVX optimizations
+    }
     
     return 0;
 }
 ```
 
-### 2. Compile-Time Platform Detection
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-void optimizedFunction() {
-    // All detection happens at compile time
-    constexpr auto os = trlc::platform::getOperatingSystem();
-    constexpr auto compiler = trlc::platform::getCompilerType();
-    constexpr auto arch = trlc::platform::getCpuArchitecture();
-    
-    if constexpr (os == trlc::platform::OperatingSystem::windows) {
-        // Windows-specific implementation
-        useWindowsAPI();
-    } else if constexpr (os == trlc::platform::OperatingSystem::linux_generic) {
-        // Linux-specific implementation
-        useLinuxAPI();
-    }
-    
-    if constexpr (arch == trlc::platform::CpuArchitecture::x86_64) {
-        // Use x86_64 optimizations
-        useSimdInstructions();
-    }
-}
-```
-
-### 3. Feature-Based Conditional Compilation
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-template <typename T>
-auto safeOperation(T&& operation) {
-    if constexpr (trlc::platform::hasFeature<trlc::platform::LanguageFeature::exceptions>()) {
-        try {
-            return operation();
-        } catch (...) {
-            return handleError();
-        }
-    } else {
-        // No exception support - use error codes
-        return operation(); // Assume operation handles errors internally
-    }
-}
-```
-
-## Platform Support
-
-### Operating Systems
-
-| Platform | Status | Variants Detected |
-|----------|--------|-------------------|
-| **Windows** | ✅ Full | All versions, MinGW |
-| **Linux** | ✅ Full | Ubuntu, Debian, Red Hat, Generic |
-| **macOS** | ✅ Full | All versions |
-| **FreeBSD** | ✅ Full | All versions |
-| **OpenBSD** | ✅ Full | All versions |
-| **NetBSD** | ✅ Full | All versions |
-| **Android** | ✅ Basic | NDK support |
-| **iOS** | ✅ Basic | Xcode support |
-
-### Compilers
-
-| Compiler | Status | Versions Supported |
-|----------|--------|--------------------|
-| **GCC** | ✅ Full | 7.0+ |
-| **Clang** | ✅ Full | 6.0+ |
-| **MSVC** | ✅ Full | 2017+ |
-| **Intel C++** | ✅ Basic | 19.0+ |
-| **MinGW** | ✅ Full | GCC-based |
-
-### Architectures
-
-| Architecture | Status | Detection Level |
-|--------------|--------|----------------|
-| **x86** | ✅ Full | 32-bit |
-| **x86_64** | ✅ Full | 64-bit, SIMD features |
-| **ARM** | ✅ Full | ARMv7+ |
-| **ARM64** | ✅ Full | ARMv8+, NEON |
-| **MIPS** | ✅ Basic | 32/64-bit |
-| **PowerPC** | ✅ Basic | 32/64-bit |
-
-## Requirements
-
-### Minimum Requirements
-- **C++ Standard**: C++17 or later
-- **Compiler**: GCC 7+, Clang 6+, MSVC 2017+, Intel C++ 19+
-- **Build System**: CMake 3.15+ (optional, for testing)
-
-### Recommended
-- **C++ Standard**: C++20 for enhanced template features
-- **Compiler**: Latest stable version for best optimization
-- **Build Type**: Release mode for zero-overhead performance
-
 ## Installation
 
-### Header-Only Installation
-
-1. **Download/Clone**: Get the library source code
-2. **Include Path**: Add `include/` directory to your compiler's include path
-3. **Include Header**: Add `#include "trlc/platform/core.hpp"` to your code
-
+### Header-Only Setup
 ```bash
-git clone https://github.com/tranglecong/platform.git
-cd platform
-# Add include/ to your project's include path
+git clone https://github.com/tranglecong/trlc-flatform.git
+# Add include/ directory to your compiler's include path
+g++ -I./trlc-flatform/include your_code.cpp
 ```
 
 ### CMake Integration
-
-#### As a Subproject
-
 ```cmake
-# Add to your CMakeLists.txt
-add_subdirectory(third_party/trlc-platform)
-target_link_libraries(your_target PRIVATE trlc::platform)
-```
-
-#### Using FetchContent (Recommended)
-
-```cmake
-cmake_minimum_required(VERSION 3.15)
-
+# Method 1: FetchContent (Recommended)
 include(FetchContent)
 FetchContent_Declare(
     trlc-platform
-    GIT_REPOSITORY https://github.com/yourusername/trlc-flatform.git
-    GIT_TAG v1.0.0
+    GIT_REPOSITORY https://github.com/tranglecong/trlc-flatform.git
+    GIT_TAG main
 )
 FetchContent_MakeAvailable(trlc-platform)
-
-# Link to your target
 target_link_libraries(your_target PRIVATE trlc::platform)
 
-# Optional: Enable debug utilities in Debug builds
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(your_target PRIVATE TRLC_PLATFORM_ENABLE_DEBUG_UTILS=1)
-endif()
-```
-
-#### As an Installed Package
-
-```cmake
-# Install the library first
-find_package(trlc-platform REQUIRED)
+# Method 2: Submodule
+add_subdirectory(third_party/trlc-platform)
 target_link_libraries(your_target PRIVATE trlc::platform)
-```
-
-#### Advanced CMake Configuration
-
-```cmake
-# Configure build options
-set(TRLC_PLATFORM_ENABLE_ASSERTS ON CACHE BOOL "Enable assertions")
-set(TRLC_PLATFORM_BUILD_TESTS OFF CACHE BOOL "Skip building tests")
-
-# Use specific C++ standard
-target_compile_features(your_target PRIVATE cxx_std_20)
-
-# Platform-specific optimizations
-if(TRLC_PLATFORM_LINUX)
-    target_compile_options(your_target PRIVATE -march=native)
-endif()
-```
-
-### Package Managers
-
-```bash
-# vcpkg
-vcpkg install trlc-platform
-
-# Conan
-conan install trlc-platform/1.0.0@
-
-# CPM
-CPMAddPackage("gh:trlc/platform@1.0.0")
-```
-
-## Usage Examples
-
-### Basic Platform Detection
-
-#### Simple Platform Check
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-void platformSpecificFunction() {
-    constexpr auto os = trlc::platform::getOperatingSystem();
-    
-    if constexpr (os == trlc::platform::OperatingSystem::windows) {
-        // Windows-specific code
-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-    } else if constexpr (os == trlc::platform::OperatingSystem::linux_generic) {
-        // Linux-specific code
-        nice(-10);  // Increase priority
-    } else if constexpr (os == trlc::platform::OperatingSystem::macos) {
-        // macOS-specific code
-        pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
-    }
-}
-```
-
-#### Compiler-Specific Optimizations
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-template<typename T>
-int countBits(T value) {
-    constexpr auto compiler = trlc::platform::getCompilerType();
-    
-    if constexpr (compiler == trlc::platform::CompilerType::gcc ||
-                  compiler == trlc::platform::CompilerType::clang) {
-        if constexpr (sizeof(T) == sizeof(unsigned int)) {
-            return __builtin_popcount(static_cast<unsigned int>(value));
-        } else if constexpr (sizeof(T) == sizeof(unsigned long)) {
-            return __builtin_popcountl(static_cast<unsigned long>(value));
-        } else {
-            return __builtin_popcountll(static_cast<unsigned long long>(value));
-        }
-    } else if constexpr (compiler == trlc::platform::CompilerType::msvc) {
-        // MSVC intrinsics
-        #include <intrin.h>
-        if constexpr (sizeof(T) == sizeof(unsigned int)) {
-            return __popcnt(static_cast<unsigned int>(value));
-        } else {
-            return __popcnt64(static_cast<unsigned __int64>(value));
-        }
-    } else {
-        // Portable fallback
-        int count = 0;
-        while (value) {
-            count += value & 1;
-            value >>= 1;
-        }
-        return count;
-    }
-}
-```
-
-### Advanced Feature Detection
-
-#### Multi-Feature Requirements
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-template<typename Container>
-void parallelSort(Container& container) {
-    using namespace trlc::platform;
-    
-    // Check if we have threading and atomic operations
-    if constexpr (hasFeature<LanguageFeature::threads>() && 
-                  hasFeature<LanguageFeature::atomic_operations>()) {
-        
-        constexpr auto arch = getCpuArchitecture();
-        
-        // Architecture-specific thread optimization
-        size_t thread_count;
-        if constexpr (arch == CpuArchitecture::x86_64) {
-            // x86_64 typically benefits from more threads
-            thread_count = std::thread::hardware_concurrency();
-        } else {
-            // ARM/other architectures may benefit from fewer threads
-            thread_count = std::max(2u, std::thread::hardware_concurrency() / 2);
-        }
-        
-        // Use parallel sort with optimal thread count
-        std::sort(std::execution::par, container.begin(), container.end());
-    } else {
-        // Fallback to sequential sort
-        std::sort(container.begin(), container.end());
-    }
-}
-```
-
-#### SIMD-Optimized Operations
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-void vectorMultiply(const float* a, const float* b, float* result, size_t count) {
-    using namespace trlc::platform;
-    
-    // Runtime feature detection for SIMD
-    if (hasRuntimeFeature(RuntimeFeature::avx)) {
-        // AVX implementation (8 floats at once)
-        #include <immintrin.h>
-        const size_t simd_count = count / 8;
-        for (size_t i = 0; i < simd_count; ++i) {
-            __m256 va = _mm256_load_ps(&a[i * 8]);
-            __m256 vb = _mm256_load_ps(&b[i * 8]);
-            __m256 vr = _mm256_mul_ps(va, vb);
-            _mm256_store_ps(&result[i * 8], vr);
-        }
-        // Handle remaining elements
-        for (size_t i = simd_count * 8; i < count; ++i) {
-            result[i] = a[i] * b[i];
-        }
-    } else if (hasRuntimeFeature(RuntimeFeature::sse)) {
-        // SSE implementation (4 floats at once)
-        #include <xmmintrin.h>
-        const size_t simd_count = count / 4;
-        for (size_t i = 0; i < simd_count; ++i) {
-            __m128 va = _mm_load_ps(&a[i * 4]);
-            __m128 vb = _mm_load_ps(&b[i * 4]);
-            __m128 vr = _mm_mul_ps(va, vb);
-            _mm_store_ps(&result[i * 4], vr);
-        }
-        // Handle remaining elements
-        for (size_t i = simd_count * 4; i < count; ++i) {
-            result[i] = a[i] * b[i];
-        }
-    } else {
-        // Scalar fallback
-        for (size_t i = 0; i < count; ++i) {
-            result[i] = a[i] * b[i];
-        }
-    }
-}
-```
-
-### Integration Patterns
-
-#### Library Abstraction Layer
-
-```cpp
-// platform_layer.hpp
-#pragma once
-#include "trlc/platform/core.hpp"
-
-namespace mylib {
-
-class PlatformLayer {
-public:
-    // High-precision timer
-    static double getCurrentTime() {
-        constexpr auto os = trlc::platform::getOperatingSystem();
-        
-        if constexpr (os == trlc::platform::OperatingSystem::windows) {
-            LARGE_INTEGER freq, counter;
-            QueryPerformanceFrequency(&freq);
-            QueryPerformanceCounter(&counter);
-            return static_cast<double>(counter.QuadPart) / freq.QuadPart;
-        } else {
-            // POSIX implementation
-            struct timespec ts;
-            clock_gettime(CLOCK_MONOTONIC, &ts);
-            return ts.tv_sec + ts.tv_nsec * 1e-9;
-        }
-    }
-    
-    // Memory alignment
-    template<size_t Alignment>
-    static void* alignedAlloc(size_t size) {
-        constexpr auto os = trlc::platform::getOperatingSystem();
-        
-        if constexpr (os == trlc::platform::OperatingSystem::windows) {
-            return _aligned_malloc(size, Alignment);
-        } else {
-            return aligned_alloc(Alignment, size);
-        }
-    }
-    
-    template<size_t Alignment>
-    static void alignedFree(void* ptr) {
-        constexpr auto os = trlc::platform::getOperatingSystem();
-        
-        if constexpr (os == trlc::platform::OperatingSystem::windows) {
-            _aligned_free(ptr);
-        } else {
-            free(ptr);
-        }
-    }
-};
-
-} // namespace mylib
-```
-
-#### Template Metaprogramming Integration
-
-```cpp
-#include "trlc/platform/core.hpp"
-
-namespace mylib {
-
-// SFINAE helper for platform-specific template specializations
-template<trlc::platform::OperatingSystem OS>
-using enable_if_platform_t = std::enable_if_t<
-    trlc::platform::getOperatingSystem() == OS, int>;
-
-// Platform-specific implementations
-template<typename T, enable_if_platform_t<trlc::platform::OperatingSystem::windows> = 0>
-class FileHandler {
-    // Windows-specific implementation using Win32 API
-    HANDLE file_handle_;
-public:
-    bool open(const std::string& path) {
-        file_handle_ = CreateFileA(path.c_str(), GENERIC_READ, 
-                                   FILE_SHARE_READ, nullptr, 
-                                   OPEN_EXISTING, 0, nullptr);
-        return file_handle_ != INVALID_HANDLE_VALUE;
-    }
-};
-
-template<typename T, enable_if_platform_t<trlc::platform::OperatingSystem::linux_generic> = 0>
-class FileHandler {
-    // Linux-specific implementation using POSIX API
-    int file_descriptor_;
-public:
-    bool open(const std::string& path) {
-        file_descriptor_ = ::open(path.c_str(), O_RDONLY);
-        return file_descriptor_ != -1;
-    }
-};
-
-} // namespace mylib
 ```
 
 ## API Reference
 
 ### Core Detection Functions
-
-The main API is located in [`include/trlc/platform/core.hpp`](include/trlc/platform/core.hpp):
-
 ```cpp
 namespace trlc::platform {
-    
-    //==============================================================================
-    // Platform Detection (compile-time)
-    //==============================================================================
-    
-    /// Get the current operating system
+    // Platform detection (compile-time)
     constexpr OperatingSystem getOperatingSystem() noexcept;
-    
-    /// Get the current compiler type
     constexpr CompilerType getCompilerType() noexcept;
-    
-    /// Get the CPU architecture
     constexpr CpuArchitecture getCpuArchitecture() noexcept;
-    
-    /// Get the C++ standard version
     constexpr CppStandard getCppStandard() noexcept;
-    
-    /// Get pointer size in bits (32 or 64)
-    constexpr int getPointerSize() noexcept;
-    
-    /// Check if system is little endian
     constexpr bool isLittleEndian() noexcept;
+    constexpr int getPointerSize() noexcept;  // 32 or 64 bits
     
-    //==============================================================================
-    // Feature Detection
-    //==============================================================================
-    
-    /// Check for language features (compile-time)
+    // Feature detection
     template <LanguageFeature TFeature>
     constexpr bool hasFeature() noexcept;
     
-    /// Check for runtime CPU features (runtime)
-    bool hasRuntimeFeature(RuntimeFeature feature) noexcept;
+    bool hasRuntimeFeature(RuntimeFeature feature) noexcept; // Runtime
     
-    /// Check for multiple language features (in traits namespace)
-    // Note: These functions are in trlc::platform::traits namespace
-    // Use: trlc::platform::traits::hasAllFeatures<LanguageFeature::exceptions, LanguageFeature::threads>()
-    // Use: trlc::platform::traits::hasAnyFeature<LanguageFeature::exceptions, LanguageFeature::rtti>()
-    
-    //==============================================================================
-    // Platform Information Structures
-    //==============================================================================
-    
-    /// Comprehensive platform information
+    // Platform information
     PlatformReport getPlatformReport() noexcept;
-    
-    /// Brief platform summary string
-    std::string getBriefPlatformSummary();
-    
-    /// Print detailed platform report
-    void printPlatformReport();
-    
-    //==============================================================================
-    // Runtime Initialization
-    //==============================================================================
-    
-    /// Initialize runtime features (call once at startup)
-    void initializePlatform() noexcept;
-    
-    /// Check if platform is initialized
-    bool isPlatformInitialized() noexcept;
+    void initializePlatform() noexcept; // Call once for runtime features
 }
 ```
 
-### Individual Header APIs
-
-Each header provides specialized functionality:
-
-#### [`compiler.hpp`](include/trlc/platform/compiler.hpp) - Compiler Detection
-
+### Available Enums
 ```cpp
-namespace trlc::platform {
-    enum class CompilerType { gcc, clang, msvc, intel, unknown };
-    
-    constexpr CompilerType getCompilerType() noexcept;
-    constexpr CompilerInfo getCompilerInfo() noexcept;
-    
-    // Compiler capability queries
-    constexpr bool isGccCompatible() noexcept;
-    constexpr bool isClangCompatible() noexcept;
-    constexpr bool hasBuiltinFunctions() noexcept;
-}
-```
-
-#### [`platform.hpp`](include/trlc/platform/platform.hpp) - OS Detection
-
-```cpp
-namespace trlc::platform {
-    enum class OperatingSystem { 
-        windows, linux_generic, macos, 
-        freebsd, openbsd, netbsd, android, ios, unknown 
-    };
-    
-    constexpr OperatingSystem getOperatingSystem() noexcept;
-    constexpr PlatformInfo getPlatformInfo() noexcept;
-    
-    // Platform capability queries
-    constexpr bool isPosix() noexcept;
-    constexpr bool isUnixLike() noexcept;
-    constexpr bool supportsCaseSensitiveFilesystem() noexcept;
-}
-```
-
-#### [`architecture.hpp`](include/trlc/platform/architecture.hpp) - CPU Architecture
-
-```cpp
-namespace trlc::platform {
-    enum class CpuArchitecture { 
-        x86_64, arm_v8_64, arm_v7_32, 
-        mips_64, powerpc_64, unknown 
-    };
-    
-    constexpr CpuArchitecture getCpuArchitecture() noexcept;
-    constexpr ArchitectureInfo getArchitectureInfo() noexcept;
-    
-    // Architecture queries
-    constexpr bool is64Bit() noexcept;
-    constexpr bool supportsUnalignedAccess() noexcept;
-    constexpr bool hasSimdSupport() noexcept;
-}
-```
-
-#### [`features.hpp`](include/trlc/platform/features.hpp) - Feature Detection
-
-```cpp
-namespace trlc::platform {
-    enum class LanguageFeature {
-        exceptions, rtti, threads, atomic_operations,
-        concepts, ranges, coroutines, modules
-    };
-    
-    enum class RuntimeFeature {
-        sse, sse2, sse3, sse4_1, sse4_2,
-        avx, avx2, avx512f,
-        neon, hardware_aes, hardware_random
-    };
-    
-    template <LanguageFeature TFeature>
-    constexpr bool hasFeature() noexcept;
-    
-    bool hasRuntimeFeature(RuntimeFeature feature) noexcept;
-    FeatureSet getFeatureSet() noexcept;
-}
-```
-
-#### [`debug.hpp`](include/trlc/platform/debug.hpp) - Debug Utilities
-
-```cpp
-namespace trlc::platform {
-    // Debug build detection
-    bool isDebugBuild() noexcept;
-    bool isReleaseBuild() noexcept;
-    bool hasDebugInfo() noexcept;
-    
-    // Debug utilities
-    class DebugUtils {
-    public:
-        static bool canCaptureStackTrace() noexcept;
-        static void debugBreak() noexcept;
-        static void unreachable() noexcept;
-    };
-}
-```
-
-### Template Metaprogramming API
-
-Advanced template utilities in [`traits.hpp`](include/trlc/platform/traits.hpp):
-
-```cpp
-namespace trlc::platform::traits {
-    
-    //==============================================================================
-    // SFINAE Helpers
-    //==============================================================================
-    
-    /// Enable template if feature is available
-    template <LanguageFeature TFeature>
-    using enable_if_feature_t = std::enable_if_t<hasFeature<TFeature>(), int>;
-    
-    /// Enable template if feature is NOT available
-    template <LanguageFeature TFeature>
-    using enable_if_no_feature_t = std::enable_if_t<!hasFeature<TFeature>(), int>;
-    
-    /// Enable template if ALL features are available
-    template <LanguageFeature... Features>
-    using enable_if_all_features_t = std::enable_if_t<(hasFeature<Features>() && ...), int>;
-    
-    //==============================================================================
-    // Variadic Feature Testing
-    //==============================================================================
-    
-    /// Check if all specified features are available
-    template <LanguageFeature... Features>
-    constexpr bool hasAllFeatures() noexcept;
-    
-    /// Check if any of the specified features are available
-    template <LanguageFeature... Features>
-    constexpr bool hasAnyFeature() noexcept;
-    
-    /// Count how many features are available
-    template <LanguageFeature... Features>
-    constexpr size_t countFeatures() noexcept;
-    
-    //==============================================================================
-    // Type Traits
-    //==============================================================================
-    
-    /// Compile-time feature availability trait
-    template <LanguageFeature TFeature>
-    struct FeatureAvailable : std::bool_constant<hasFeature<TFeature>()> {};
-    
-    template <LanguageFeature TFeature>
-    constexpr bool feature_available_v = FeatureAvailable<TFeature>::value;
-    
-    /// Platform matching trait
-    template <OperatingSystem TOS>
-    struct PlatformMatches : std::bool_constant<getOperatingSystem() == TOS> {};
-    
-    template <OperatingSystem TOS>
-    constexpr bool platform_matches_v = PlatformMatches<TOS>::value;
-}
-```
-
-### Convenient Macros
-
-Preprocessor macros in [`macros.hpp`](include/trlc/platform/macros.hpp):
-
-```cpp
-//==============================================================================
-// Platform Detection Macros
-//==============================================================================
-
-#define TRLC_PLATFORM_WINDOWS    /* 1 if Windows, 0 otherwise */
-#define TRLC_PLATFORM_LINUX      /* 1 if Linux, 0 otherwise */
-#define TRLC_PLATFORM_MACOS      /* 1 if macOS, 0 otherwise */
-#define TRLC_COMPILER_GCC         /* 1 if GCC, 0 otherwise */
-#define TRLC_COMPILER_CLANG       /* 1 if Clang, 0 otherwise */
-#define TRLC_ARCH_X86_64          /* 1 if x86_64, 0 otherwise */
-
-//==============================================================================
-// Feature Testing Macros
-//==============================================================================
-
-/// Test for language feature availability
-#define TRLC_HAS_FEATURE(feature) \
-    (trlc::platform::hasFeature<trlc::platform::LanguageFeature::feature>())
-
-/// Test for runtime feature availability  
-#define TRLC_HAS_RUNTIME_FEATURE(feature) \
-    (trlc::platform::hasRuntimeFeature(trlc::platform::RuntimeFeature::feature))
-
-/// Convenient feature shortcuts
-#define TRLC_HAS_EXCEPTIONS       TRLC_HAS_FEATURE(exceptions)
-#define TRLC_HAS_THREADS          TRLC_HAS_FEATURE(threads)
-#define TRLC_HAS_RTTI             TRLC_HAS_FEATURE(rtti)
-
-//==============================================================================
-// Conditional Compilation Macros
-//==============================================================================
-
-/// Execute code only if feature is available  
-/// Note: Use TRLC_IF for general conditional compilation
-/// Example: TRLC_IF(TRLC_HAS_FEATURE(exceptions), { /* exception code */ })
-
-/// Require feature at compile time
-#define TRLC_REQUIRE_FEATURE(feature) \
-    static_assert(TRLC_HAS_FEATURE(feature), \
-                  "Required feature '" #feature "' not available")
-
-/// Platform-specific code blocks (using actual implementation)
-/// Note: Use TRLC_ON_WINDOWS, TRLC_ON_POSIX for conditional compilation
-/// Example: TRLC_ON_WINDOWS({ /* Windows code */ })
-```
-
-### Usage Patterns
-
-#### Template Specialization Based on Platform
-
-```cpp
-#include "trlc/platform/platform.hpp"
-
-// Platform-specific implementations using if constexpr
-template<typename T>
-class NetworkSocket {
-public:
-    bool connect(const std::string& address) {
-        constexpr auto os = trlc::platform::getOperatingSystem();
-        
-        if constexpr (os == trlc::platform::OperatingSystem::windows) {
-            // Windows-specific implementation using WinSock
-            std::cout << "Windows socket implementation" << std::endl;
-            return true;
-        } else if constexpr (os == trlc::platform::OperatingSystem::linux_generic) {
-            // Linux-specific implementation using POSIX sockets
-            std::cout << "Linux socket implementation" << std::endl;
-            return true;
-        } else {
-            // Generic POSIX implementation
-            std::cout << "Generic POSIX socket implementation" << std::endl;
-            return true;
-        }
-    }
+enum class OperatingSystem {
+    windows, linux_generic, macos, freebsd, android, ios, unknown
 };
-```
 
-#### Feature-Conditional Template Instantiation
+enum class CompilerType {
+    gcc, clang, msvc, intel, unknown  
+};
 
-```cpp
-#include "trlc/platform/traits.hpp"
+enum class CpuArchitecture {
+    x86_64, arm_v8_64, arm_v7_32, unknown
+};
 
-template<typename Container,
-         trlc::platform::traits::enable_if_feature_t<
-             trlc::platform::LanguageFeature::threads> = 0>
-void parallelProcess(Container& data) {
-    // Multi-threaded implementation
-    std::cout << "Using parallel processing" << std::endl;
-    std::sort(data.begin(), data.end());
-}
+enum class LanguageFeature {
+    exceptions, rtti, threads, atomic_operations, concepts, ranges
+};
 
-template<typename Container,
-         trlc::platform::traits::enable_if_no_feature_t<
-             trlc::platform::LanguageFeature::threads> = 0>
-void parallelProcess(Container& data) {
-    // Single-threaded fallback
-    std::cout << "Using single-threaded fallback" << std::endl;
-    std::sort(data.begin(), data.end());
-}
-}
+enum class RuntimeFeature {
+    sse, sse2, avx, avx2, neon, hardware_aes
+};
 ```
 
 ## Performance
