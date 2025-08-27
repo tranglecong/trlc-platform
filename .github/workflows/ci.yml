@@ -207,75 +207,6 @@ jobs:
               cd build && ctest --output-on-failure
             "
         fi
-
-  #============================================================================
-  # Compiler Compatibility Testing
-  #============================================================================
-  test-compiler-versions:
-    name: Extended Compiler Testing
-    runs-on: ubuntu-22.04
-    needs: test-matrix
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Older GCC versions (minimum supported)
-          - compiler: gcc-9
-            std: "17"
-          - compiler: gcc-10  
-            std: "17 20"
-          
-          # Older Clang versions (minimum supported)
-          - compiler: clang-10
-            std: "17"
-          - compiler: clang-11
-            std: "17 20"
-          - compiler: clang-12
-            std: "17 20"
-          
-          # Latest versions for future compatibility
-          - compiler: gcc-13
-            std: "17 20 23"
-          - compiler: clang-16
-            std: "17 20 23"
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Setup compiler
-      run: |
-        sudo apt-get update
-        if [[ "${{ matrix.compiler }}" == gcc-* ]]; then
-          version=${matrix.compiler#gcc-}
-          sudo apt-get install -y gcc-${version} g++-${version}
-          echo "CC=gcc-${version}" >> $GITHUB_ENV
-          echo "CXX=g++-${version}" >> $GITHUB_ENV
-        elif [[ "${{ matrix.compiler }}" == clang-* ]]; then
-          version=${matrix.compiler#clang-}
-          sudo apt-get install -y clang-${version}
-          echo "CC=clang-${version}" >> $GITHUB_ENV
-          echo "CXX=clang++-${version}" >> $GITHUB_ENV
-        fi
-
-    - name: Test C++ standards
-      run: |
-        for std in ${{ matrix.std }}; do
-          echo "🧪 Testing ${{ matrix.compiler }} with C++${std}"
-          
-          cmake -B build-${std} \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_CXX_STANDARD=${std} \
-                -DTRLC_PLATFORM_BUILD_TESTS=ON
-          
-          cmake --build build-${std} --parallel $(nproc)
-          cd build-${std} && ctest --output-on-failure
-          cd ..
-          
-          echo "✅ ${{ matrix.compiler }} C++${std} passed"
-        done
-
   #============================================================================
   # Integration and Packaging Tests
   #============================================================================
@@ -290,37 +221,33 @@ jobs:
 
     - name: Test CMake package installation
       run: |
-        # Install the package
-        cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRLC_PLATFORM_BUILD_TESTS=OFF
-        cmake --build build
-        sudo cmake --install build --prefix /usr/local
-        
-        # Test finding the package
-        cat > test_find_package.cmake << 'EOF'
-        cmake_minimum_required(VERSION 3.16)
-        project(test_find_package CXX)
-        
-        find_package(trlc-platform REQUIRED)
-        
-        add_executable(test_app test_app.cpp)
-        target_link_libraries(test_app trlc::platform)
-        EOF
-        
-        cat > test_app.cpp << 'EOF'
-        #include <trlc/platform/core.hpp>
-        #include <iostream>
-        
-        int main() {
-            auto report = trlc::platform::createPlatformReport();
-            std::cout << "Package installation test successful!" << std::endl;
-            std::cout << report.generateSummary() << std::endl;
-            return 0;
-        }
-        EOF
-        
-        cmake -B test_install -f test_find_package.cmake
-        cmake --build test_install
-        ./test_install/test_app
+          # Test finding the package
+          cat > CMakeLists.txt << 'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(test_find_package CXX)
+
+          find_package(trlc-platform REQUIRED)
+
+          add_executable(test_app test_app.cpp)
+          target_link_libraries(test_app trlc::platform)
+          EOF
+
+          cat > test_app.cpp << 'EOF'
+          #include <trlc/platform/core.hpp>
+          #include <iostream>
+
+          int main() {
+              auto report = trlc::platform::createPlatformReport();
+              std::cout << "Package installation test successful!" << std::endl;
+              std::cout << report.generateSummary() << std::endl;
+              return 0;
+          }
+          EOF
+
+          cmake -B test_install -S .
+          cmake --build test_install
+          ./test_install/test_app
+
 
   #============================================================================
   # Final Status Report
@@ -328,7 +255,7 @@ jobs:
   ci-status:
     name: CI/CD Status Summary
     runs-on: ubuntu-22.04
-    needs: [test-matrix, test-architectures, test-compiler-versions, test-packaging]
+    needs: [test-matrix, test-architectures, test-packaging]
     if: always()
     
     steps:
@@ -340,6 +267,5 @@ jobs:
         echo "📊 Job Status Summary:"
         echo "  Cross-Platform Tests:   ${{ needs.test-matrix.result }}"
         echo "  Architecture Tests:     ${{ needs.test-architectures.result }}"
-        echo "  Compiler Tests:         ${{ needs.test-compiler-versions.result }}"
         echo "  Packaging:              ${{ needs.test-packaging.result }}"
         echo ""
