@@ -14,9 +14,9 @@ env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  #============================================================================
+  #======================================
   # Validate Release
-  #============================================================================
+  #======================================
   validate-release:
     name: Validate Release
     runs-on: ubuntu-22.04
@@ -99,9 +99,9 @@ jobs:
           echo "⚠️  No CHANGELOG.md file found"
         fi
 
-  #============================================================================
+  #======================================
   # Build Release Artifacts
-  #============================================================================
+  #======================================
   build-artifacts:
     name: Build Release Artifacts
     runs-on: ${{ matrix.os }}
@@ -127,19 +127,23 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup build environment
+    - name: Setup build environment (Linux)
+      if: runner.os == 'Linux'
       run: |
-        if [ "${{ runner.os }}" == "Windows" ]; then
-          # Windows-specific setup
-          echo "Setting up Windows environment"
-        elif [ "${{ runner.os }}" == "macOS" ]; then
-          # macOS-specific setup
-          echo "Setting up macOS environment"
-        else
-          # Linux setup
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake
-        fi
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build
+
+    - name: Setup build environment (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install cmake ninja -y
+        echo "Setting up Windows environment"
+
+    - name: Setup build environment (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake ninja
+        echo "Setting up macOS environment"
 
     - name: Build and test
       shell: bash
@@ -155,7 +159,11 @@ jobs:
               -DCMAKE_INSTALL_PREFIX=install
         
         # Build
-        cmake --build build --config Release --parallel $(nproc 2>/dev/null || echo 2)
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          cmake --build build --config Release --parallel
+        else
+          cmake --build build --config Release --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+        fi
         
         # Test
         cd build
@@ -174,18 +182,22 @@ jobs:
         archive_name="trlc-platform-$version-source"
         
         # Create source archive excluding build artifacts and git
-        if [ "${{ matrix.archive }}" == "zip" ]; then
+        if [ "${{ matrix.archive }}" = "zip" ]; then
           # Windows - create ZIP
-          7z a "$archive_name.zip" . \
-             -x!build -x!.git -x!.cache -x!*.zip -x!*.tar.gz
+          powershell -Command "Compress-Archive -Path . -DestinationPath $archive_name.zip -Exclude build,.git,.cache,*.zip,*.tar.gz"
         else
           # Linux/macOS - create tar.gz
-          tar --exclude='./build' \
-              --exclude='./.git' \
-              --exclude='./.cache' \
-              --exclude='*.zip' \
-              --exclude='*.tar.gz' \
-              -czf "$archive_name.tar.gz" .
+          # Copy source to a new directory to avoid archiving changing files
+          mkdir src-archive-tmp
+          if command -v rsync >/dev/null 2>&1; then
+            rsync -av --exclude build --exclude .git --exclude .cache --exclude '*.zip' --exclude '*.tar.gz' ./ src-archive-tmp/
+          else
+            cp -r . src-archive-tmp/
+            rm -rf src-archive-tmp/build src-archive-tmp/.git src-archive-tmp/.cache
+            find src-archive-tmp/ -name "*.zip" -o -name "*.tar.gz" -delete
+          fi
+          tar -czf "$archive_name.tar.gz" -C src-archive-tmp .
+          rm -rf src-archive-tmp
         fi
 
     - name: Create header-only package
@@ -196,15 +208,19 @@ jobs:
         
         # Create header-only package
         mkdir -p "$headers_name"
-        cp -r include/* "$headers_name/"
-        cp README.md "$headers_name/" 2>/dev/null || true
-        cp LICENSE "$headers_name/" 2>/dev/null || true
+        if [ -d "include" ]; then
+          cp -r include/* "$headers_name/"
+        fi
+        [ -f "README.md" ] && cp "README.md" "$headers_name/" || true
+        [ -f "LICENSE" ] && cp "LICENSE" "$headers_name/" || true
         
-        if [ "${{ matrix.archive }}" == "zip" ]; then
-          7z a "$headers_name.zip" "$headers_name"
+        if [ "${{ matrix.archive }}" = "zip" ]; then
+          powershell -Command "Compress-Archive -Path '$headers_name' -DestinationPath '$headers_name.zip'"
         else
           tar -czf "$headers_name.tar.gz" "$headers_name"
         fi
+        
+        rm -rf "$headers_name"
 
     - name: Create binary package
       shell: bash
@@ -213,10 +229,14 @@ jobs:
         binary_name="trlc-platform-$version-${{ matrix.name }}"
         
         # Package the installation
-        if [ "${{ matrix.archive }}" == "zip" ]; then
-          cd install && 7z a "../$binary_name.zip" . && cd ..
+        if [ -d "install" ]; then
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            cd install && powershell -Command "Compress-Archive -Path * -DestinationPath '../$binary_name.zip'" && cd ..
+          else
+            tar -czf "$binary_name.tar.gz" -C install .
+          fi
         else
-          tar -czf "$binary_name.tar.gz" -C install .
+          echo "⚠️ Install directory not found, skipping binary package"
         fi
 
     - name: Generate checksums
@@ -224,18 +244,25 @@ jobs:
       run: |
         echo "🔐 Generating checksums..."
         
-        if [ "${{ runner.os }}" == "Windows" ]; then
-          # Windows checksums
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          # Windows checksums using PowerShell
           for file in *.zip; do
             if [ -f "$file" ]; then
-              certutil -hashfile "$file" SHA256 | grep -v "CertUtil" > "$file.sha256"
+              powershell -Command "(Get-FileHash -Path '$file' -Algorithm SHA256).Hash.ToLower() + '  $file'" > "$file.sha256"
             fi
           done
         else
           # Linux/macOS checksums
           for file in *.tar.gz; do
             if [ -f "$file" ]; then
-              sha256sum "$file" > "$file.sha256"
+              # Use shasum on macOS, sha256sum on Linux
+              if command -v sha256sum >/dev/null 2>&1; then
+                sha256sum "$file" > "$file.sha256"
+              elif command -v shasum >/dev/null 2>&1; then
+                shasum -a 256 "$file" > "$file.sha256"
+              else
+                echo "⚠️ No checksum utility found"
+              fi
             fi
           done
         fi
@@ -250,9 +277,9 @@ jobs:
           *.sha256
         retention-days: 30
 
-  #============================================================================
+  #======================================
   # Create GitHub Release
-  #============================================================================
+  #======================================
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
@@ -311,10 +338,6 @@ jobs:
         - **Windows:** \`trlc-platform-$version-Windows.zip\`
         - **macOS:** \`trlc-platform-$version-macOS.tar.gz\`
         
-        ### Documentation
-        - **API Documentation:** \`trlc-platform-docs-$version.tar.gz\`
-        - **Online Documentation:** [View on GitHub Pages](https://tranglecong.github.io/trlc-platform/)
-        
         ## 🔐 Verification
         
         All release assets include SHA256 checksums for verification:
@@ -323,13 +346,6 @@ jobs:
         # Verify download integrity
         sha256sum -c *.sha256
         \`\`\`
-        
-        ## 📚 Documentation
-        
-        - **API Reference:** Complete Doxygen-generated documentation
-        - **Quick Start Guide:** See README.md
-        - **Examples:** Check the examples/ directory
-        - **Integration:** CMake and header-only usage patterns
         
         ## 🛠️ Installation
         
@@ -367,7 +383,6 @@ jobs:
         ## 📞 Support
         
         - **Issues:** [GitHub Issues](https://github.com/tranglecong/trlc-platform/issues)
-        - **Documentation:** [API Reference](https://tranglecong.github.io/trlc-platform/)
         - **Examples:** [Usage Examples](https://github.com/tranglecong/trlc-platform/tree/main/examples)
         
         ---
@@ -376,7 +391,7 @@ jobs:
         EOF
 
     - name: Create or update release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.RELEASE_TAG }}
         name: "TRLC Platform v${{ needs.validate-release.outputs.version }}"
@@ -388,9 +403,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  #============================================================================
+  #======================================
   # Post-Release Tasks
-  #============================================================================
+  #======================================
   post-release:
     name: Post-Release Tasks
     runs-on: ubuntu-22.04
@@ -408,30 +423,23 @@ jobs:
         version="${{ needs.validate-release.outputs.version }}"
         
         echo "🎉 **TRLC Platform v$version Released!**" >> $GITHUB_STEP_SUMMARY
-        echo "=======================================" >> $GITHUB_STEP_SUMMARY
+        echo "====================" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📦 **Release Assets Created:**" >> $GITHUB_STEP_SUMMARY
         echo "- 📄 Source code archives (Linux, Windows, macOS)" >> $GITHUB_STEP_SUMMARY
         echo "- 📁 Header-only package" >> $GITHUB_STEP_SUMMARY
         echo "- 📋 Binary packages for all platforms" >> $GITHUB_STEP_SUMMARY
-        echo "- 📚 Complete API documentation" >> $GITHUB_STEP_SUMMARY
         echo "- 🔐 SHA256 checksums for verification" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔗 **Links:**" >> $GITHUB_STEP_SUMMARY
         echo "- 🚀 [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})" >> $GITHUB_STEP_SUMMARY
-        echo "- 📖 [Documentation](https://tranglecong.github.io/trlc-platform/)" >> $GITHUB_STEP_SUMMARY
         echo "- 💡 [Examples](https://github.com/${{ github.repository }}/tree/main/examples)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### ✅ **Quality Assurance:**" >> $GITHUB_STEP_SUMMARY
         echo "- All tests passed across multiple platforms and compilers" >> $GITHUB_STEP_SUMMARY
-        echo "- Documentation generated and validated" >> $GITHUB_STEP_SUMMARY
         echo "- Cross-platform compatibility verified" >> $GITHUB_STEP_SUMMARY
         echo "- Version consistency validated" >> $GITHUB_STEP_SUMMARY
 
-    - name: Trigger documentation update
-      run: |
-        echo "🔄 Documentation will be automatically updated via the documentation workflow"
-        
     - name: Notify completion
       run: |
         echo "✅ Release v${{ needs.validate-release.outputs.version }} completed successfully!"
