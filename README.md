@@ -1358,4 +1358,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **TRLC Platform Library** - Write once, optimize everywhere. 🚀
 
-For more information, visit our [documentation](docs/) or check out the [examples](examples/).
+For more information, visit our [documentation](https://tranglecong.github.io/trlc-platform) or check out the [examples](examples/).
