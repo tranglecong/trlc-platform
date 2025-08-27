@@ -221,6 +221,10 @@ jobs:
 
     - name: Test CMake package installation
       run: |
+          # Install the package
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRLC_PLATFORM_BUILD_TESTS=OFF
+          cmake --build build
+          sudo cmake --install build --prefix /usr/local
           # Test finding the package
           cat > CMakeLists.txt << 'EOF'
           cmake_minimum_required(VERSION 3.16)
