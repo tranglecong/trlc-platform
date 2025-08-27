@@ -97,13 +97,28 @@ int main() {
     unsigned int test_value = 0b11010110101011010110101101011010;
     std::cout << "Test value: 0x" << std::hex << test_value << std::dec << std::endl;
     
-    // Population count using compiler builtin
+    // Population count using TRLC Platform API
     unsigned int popcount = 0;
+    
+    // Use TRLC Platform API for compiler detection instead of preprocessor
     if constexpr (getCompilerType() == CompilerType::gcc || getCompilerType() == CompilerType::clang) {
-        popcount = __builtin_popcount(test_value);
-        std::cout << "Population count (using builtin): " << popcount << std::endl;
+        // Use software fallback for better compatibility
+        unsigned int x = test_value;
+        while (x) {
+            popcount += x & 1;
+            x >>= 1;
+        }
+        std::cout << "Population count (GCC/Clang - software implementation): " << popcount << std::endl;
+    } else if constexpr (getCompilerType() == CompilerType::msvc) {
+        // Use software fallback for better compatibility
+        unsigned int x = test_value;
+        while (x) {
+            popcount += x & 1;
+            x >>= 1;
+        }
+        std::cout << "Population count (MSVC - software implementation): " << popcount << std::endl;
     } else {
-        // Fallback implementation
+        // Fallback implementation for other compilers
         unsigned int x = test_value;
         while (x) {
             popcount += x & 1;

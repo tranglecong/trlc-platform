@@ -29,6 +29,11 @@
 #include <string>
 #include <type_traits>
 
+// Platform-specific intrinsics
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+    #include <intrin.h>  // For __mm_pause on MSVC
+#endif
+
 // Include all platform detection headers in dependency order
 #include "trlc/platform/architecture.hpp"
 #include "trlc/platform/compiler.hpp"

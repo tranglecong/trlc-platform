@@ -123,10 +123,12 @@ constexpr CppStandard detectCppStandard() noexcept {
 
 /**
  * @brief Gets the __cplusplus macro value
- * @return Value of __cplusplus macro
+ * @return Value of __cplusplus macro (or _MSVC_LANG for MSVC)
  */
 constexpr long getCppVersionMacroValue() noexcept {
-#ifdef __cplusplus
+#if defined(_MSVC_LANG)
+    return _MSVC_LANG;  // MSVC uses _MSVC_LANG instead of __cplusplus
+#elif defined(__cplusplus)
     return __cplusplus;
 #else
     return 0L;

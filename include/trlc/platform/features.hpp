@@ -551,31 +551,33 @@ inline bool hasHardwareRandom() noexcept {
  * @note Language features are compile-time, runtime features require detection
  */
 constexpr FeatureSet getFeatureSet() noexcept {
-    return FeatureSet{// Language features (compile-time)
-                      .has_exceptions = hasExceptions(),
-                      .has_rtti = hasRtti(),
-                      .has_threads = hasThreads(),
-                      .has_atomic = hasAtomicOperations(),
-                      .has_inline_asm = hasInlineAssembly(),
-                      .has_vector_intrinsics = hasVectorIntrinsics(),
-                      .has_stack_protection = hasStackProtection(),
-                      .has_address_sanitizer = hasAddressSanitizer(),
-                      .has_thread_sanitizer = hasThreadSanitizer(),
-                      .has_memory_sanitizer = hasMemorySanitizer(),
-                      .has_undefined_behavior_sanitizer = hasUndefinedBehaviorSanitizer(),
+    return FeatureSet{
+        // Language features (compile-time) - must match order in struct
+        hasExceptions(),
+        hasRtti(),
+        hasThreads(),
+        hasAtomicOperations(),
+        hasInlineAssembly(),
+        hasVectorIntrinsics(),
+        hasStackProtection(),
+        hasAddressSanitizer(),
+        hasThreadSanitizer(),
+        hasMemorySanitizer(),
+        hasUndefinedBehaviorSanitizer(),
 
-                      // Runtime features (initialized to false, require runtime detection)
-                      .has_sse = false,
-                      .has_sse2 = false,
-                      .has_sse3 = false,
-                      .has_sse4_1 = false,
-                      .has_sse4_2 = false,
-                      .has_avx = false,
-                      .has_avx2 = false,
-                      .has_avx512f = false,
-                      .has_neon = false,
-                      .has_hardware_aes = false,
-                      .has_hardware_random = false};
+        // Runtime features (initialized to false, require runtime detection)
+        false,  // has_sse
+        false,  // has_sse2
+        false,  // has_sse3
+        false,  // has_sse4_1
+        false,  // has_sse4_2
+        false,  // has_avx
+        false,  // has_avx2
+        false,  // has_avx512f
+        false,  // has_neon
+        false,  // has_hardware_aes
+        false   // has_hardware_random
+    };
 }
 
 /**

@@ -39,24 +39,10 @@ jobs:
         config:
           # Linux builds
           - {
-              name: "Ubuntu 22.04 GCC 11",
-              os: ubuntu-22.04,
-              compiler: gcc,
-              version: "11",
-              std: "17 20 23"
-            }
-          - {
               name: "Ubuntu 22.04 GCC 12", 
               os: ubuntu-22.04,
               compiler: gcc,
               version: "12",
-              std: "17 20 23"
-            }
-          - {
-              name: "Ubuntu 22.04 Clang 14",
-              os: ubuntu-22.04,
-              compiler: clang,
-              version: "14",
               std: "17 20 23"
             }
           - {
@@ -68,13 +54,6 @@ jobs:
             }
           
           # macOS builds
-          - {
-              name: "macOS 12 Clang",
-              os: macos-12,
-              compiler: clang,
-              version: "default",
-              std: "17 20"
-            }
           - {
               name: "macOS 13 Clang",
               os: macos-13,

@@ -1,8 +1,8 @@
 # TRLC Platform Library v1.0.0
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/trlc/platform/actions)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/tranglecong/platform/actions)
 [![C++ Version](https://img.shields.io/badge/C%2B%2B-17%2F20%2F23-blue)](#requirements)
-[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/trlc/platform/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/tranglecong/platform/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#platform-support)
 [![Header Only](https://img.shields.io/badge/header--only-yes-success)](#installation)
 [![CMake](https://img.shields.io/badge/CMake-3.15+-blue)](https://cmake.org/)
@@ -57,7 +57,7 @@ if constexpr (trlc::platform::getCompilerType() == trlc::platform::CompilerType:
 - [Performance](#performance)
 - [Building and Testing](#building-and-testing)
 - [Troubleshooting](#troubleshooting)
-- [Examples and Demos](#examples-and-demos)
+- [Examples](#examples)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -223,7 +223,7 @@ auto safeOperation(T&& operation) {
 3. **Include Header**: Add `#include "trlc/platform/core.hpp"` to your code
 
 ```bash
-git clone https://github.com/trlc/platform.git
+git clone https://github.com/tranglecong/platform.git
 cd platform
 # Add include/ to your project's include path
 ```
@@ -246,7 +246,7 @@ cmake_minimum_required(VERSION 3.15)
 include(FetchContent)
 FetchContent_Declare(
     trlc-platform
-    GIT_REPOSITORY https://github.com/trlc/platform.git
+    GIT_REPOSITORY https://github.com/yourusername/trlc-flatform.git
     GIT_TAG v1.0.0
 )
 FetchContent_MakeAvailable(trlc-platform)
@@ -581,12 +581,10 @@ namespace trlc::platform {
     /// Check for runtime CPU features (runtime)
     bool hasRuntimeFeature(RuntimeFeature feature) noexcept;
     
-    /// Check for multiple language features
-    template <LanguageFeature... Features>
-    constexpr bool hasAllFeatures() noexcept;
-    
-    template <LanguageFeature... Features>
-    constexpr bool hasAnyFeature() noexcept;
+    /// Check for multiple language features (in traits namespace)
+    // Note: These functions are in trlc::platform::traits namespace
+    // Use: trlc::platform::traits::hasAllFeatures<LanguageFeature::exceptions, LanguageFeature::threads>()
+    // Use: trlc::platform::traits::hasAnyFeature<LanguageFeature::exceptions, LanguageFeature::rtti>()
     
     //==============================================================================
     // Platform Information Structures
@@ -728,13 +726,13 @@ namespace trlc::platform::traits {
     template <LanguageFeature TFeature>
     using enable_if_feature_t = std::enable_if_t<hasFeature<TFeature>(), int>;
     
-    /// Enable template if platform matches
-    template <OperatingSystem TOS>
-    using enable_if_platform_t = std::enable_if_t<getOperatingSystem() == TOS, int>;
+    /// Enable template if feature is NOT available
+    template <LanguageFeature TFeature>
+    using enable_if_no_feature_t = std::enable_if_t<!hasFeature<TFeature>(), int>;
     
-    /// Enable template if compiler matches
-    template <CompilerType TCompiler>
-    using enable_if_compiler_t = std::enable_if_t<getCompilerType() == TCompiler, int>;
+    /// Enable template if ALL features are available
+    template <LanguageFeature... Features>
+    using enable_if_all_features_t = std::enable_if_t<(hasFeature<Features>() && ...), int>;
     
     //==============================================================================
     // Variadic Feature Testing
@@ -809,19 +807,18 @@ Preprocessor macros in [`macros.hpp`](include/trlc/platform/macros.hpp):
 // Conditional Compilation Macros
 //==============================================================================
 
-/// Execute code only if feature is available
-#define TRLC_IF_FEATURE(feature) \
-    if constexpr (TRLC_HAS_FEATURE(feature))
+/// Execute code only if feature is available  
+/// Note: Use TRLC_IF for general conditional compilation
+/// Example: TRLC_IF(TRLC_HAS_FEATURE(exceptions), { /* exception code */ })
 
 /// Require feature at compile time
 #define TRLC_REQUIRE_FEATURE(feature) \
     static_assert(TRLC_HAS_FEATURE(feature), \
                   "Required feature '" #feature "' not available")
 
-/// Platform-specific code blocks
-#define TRLC_IF_WINDOWS    if constexpr (TRLC_PLATFORM_WINDOWS)
-#define TRLC_IF_LINUX      if constexpr (TRLC_PLATFORM_LINUX)
-#define TRLC_IF_MACOS      if constexpr (TRLC_PLATFORM_MACOS)
+/// Platform-specific code blocks (using actual implementation)
+/// Note: Use TRLC_ON_WINDOWS, TRLC_ON_POSIX for conditional compilation
+/// Example: TRLC_ON_WINDOWS({ /* Windows code */ })
 ```
 
 ### Usage Patterns
@@ -829,22 +826,29 @@ Preprocessor macros in [`macros.hpp`](include/trlc/platform/macros.hpp):
 #### Template Specialization Based on Platform
 
 ```cpp
-#include "trlc/platform/traits.hpp"
+#include "trlc/platform/platform.hpp"
 
-template<typename T, 
-         trlc::platform::traits::enable_if_platform_t<
-             trlc::platform::OperatingSystem::windows> = 0>
+// Platform-specific implementations using if constexpr
+template<typename T>
 class NetworkSocket {
-    SOCKET socket_;  // Windows socket type
-    // Windows-specific implementation
-};
-
-template<typename T,
-         trlc::platform::traits::enable_if_platform_t<
-             trlc::platform::OperatingSystem::linux_generic> = 0>
-class NetworkSocket {
-    int socket_;     // POSIX socket type
-    // Linux-specific implementation
+public:
+    bool connect(const std::string& address) {
+        constexpr auto os = trlc::platform::getOperatingSystem();
+        
+        if constexpr (os == trlc::platform::OperatingSystem::windows) {
+            // Windows-specific implementation using WinSock
+            std::cout << "Windows socket implementation" << std::endl;
+            return true;
+        } else if constexpr (os == trlc::platform::OperatingSystem::linux_generic) {
+            // Linux-specific implementation using POSIX sockets
+            std::cout << "Linux socket implementation" << std::endl;
+            return true;
+        } else {
+            // Generic POSIX implementation
+            std::cout << "Generic POSIX socket implementation" << std::endl;
+            return true;
+        }
+    }
 };
 ```
 
@@ -858,15 +862,18 @@ template<typename Container,
              trlc::platform::LanguageFeature::threads> = 0>
 void parallelProcess(Container& data) {
     // Multi-threaded implementation
-    std::for_each(std::execution::par, data.begin(), data.end(), processor);
+    std::cout << "Using parallel processing" << std::endl;
+    std::sort(data.begin(), data.end());
 }
 
 template<typename Container,
-         std::enable_if_t<!trlc::platform::hasFeature<
-             trlc::platform::LanguageFeature::threads>(), int> = 0>
+         trlc::platform::traits::enable_if_no_feature_t<
+             trlc::platform::LanguageFeature::threads> = 0>
 void parallelProcess(Container& data) {
     // Single-threaded fallback
-    std::for_each(data.begin(), data.end(), processor);
+    std::cout << "Using single-threaded fallback" << std::endl;
+    std::sort(data.begin(), data.end());
+}
 }
 ```
 
@@ -918,7 +925,7 @@ vcpkg install cmake
 
 ```bash
 # Clone repository
-git clone https://github.com/trlc/platform.git
+git clone https://github.com/tranglecong/platform.git
 cd platform
 
 # Configure and build
@@ -958,10 +965,6 @@ The library includes comprehensive tests covering:
 - ✅ **Integration**: Real-world usage scenarios, sample applications
 
 ```bash
-# Run specific test categories
-ctest -R "test_platform"      # Platform detection tests
-ctest -R "test_features"      # Feature detection tests
-ctest -R "test_integration"   # Integration tests
 
 # Run tests with verbose output
 ctest --verbose --parallel 4
@@ -973,7 +976,7 @@ make coverage
 ### Continuous Integration
 
 The project uses GitHub Actions for CI/CD with testing on:
-- Multiple compilers (GCC 7-12, Clang 6-15, MSVC 2017-2022)
+- Multiple compilers (GCC, Clang, MSVC)
 - Multiple platforms (Ubuntu, Windows, macOS)
 - Multiple C++ standards (C++17, C++20, C++23)
 - Multiple build configurations (Debug, Release, MinSizeRel)
@@ -1134,8 +1137,8 @@ If you encounter issues not covered here:
 
 1. **Check the [Examples](examples/)** - Real-world usage patterns
 2. **Review [API Documentation](docs/)** - Comprehensive API reference
-3. **Search [GitHub Issues](https://github.com/trlc/platform/issues)** - Known issues and solutions
-4. **Create a [New Issue](https://github.com/trlc/platform/issues/new)** - Report bugs or request features
+3. **Search [GitHub Issues](https://github.com/tranglecong/platform/issues)** - Known issues and solutions
+4. **Create a [New Issue](https://github.com/tranglecong/platform/issues/new)** - Report bugs or request features
 
 Include in your issue report:
 - Compiler version and platform
@@ -1143,78 +1146,26 @@ Include in your issue report:
 - Minimal reproducible example
 - Full error messages and stack traces
 
-## Examples and Demos
+## Examples
 
-### Complete Demo Application
-
-See [`examples/portable_library_demo.cpp`](examples/portable_library_demo.cpp) for a comprehensive demonstration including:
-
-- Platform-optimized memory allocators
-- Adaptive algorithm selection
-- Compiler-specific optimizations
-- Multi-threaded processing
-- Cross-platform error handling
-- Performance benchmarking
+See [`examples/portable_library_example.cpp`](examples/portable_library_example.cpp) for a comprehensive demonstration.
 
 ```bash
 # Build and run the demo
-cd examples
-g++ -I../include -std=c++17 -O2 -pthread portable_library_demo.cpp -o demo
-./demo
+mkdir build && cd build
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DTRLC_PLATFORM_BUILD_TESTS=ON \
+    -DTRLC_PLATFORM_ENABLE_ASSERTS=ON \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+make -j$(nproc)
+./portable_library_example
 ```
-
-### Integration Examples
-
-The `examples/` directory contains real-world integration examples:
-- High-performance computing applications
-- Game engine platform layers
-- Cross-platform system utilities
-- Library abstraction layers
 
 ## Contributing
 
 We welcome contributions to the TRLC Platform Library! Whether you're fixing bugs, adding features, improving documentation, or enhancing platform support, your help is appreciated.
-
-### How to Contribute
-
-1. **🍴 Fork the Repository**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/trlc-platform.git
-   cd trlc-platform
-   ```
-
-2. **🌟 Create a Feature Branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/issue-description
-   ```
-
-3. **💻 Make Your Changes**
-   - Follow the coding standards (see below)
-   - Add comprehensive tests for new features
-   - Update documentation as needed
-   - Ensure all existing tests pass
-
-4. **✅ Test Your Changes**
-   ```bash
-   mkdir build && cd build
-   cmake .. -DCMAKE_BUILD_TYPE=Debug -DTRLC_PLATFORM_BUILD_TESTS=ON
-   make -j$(nproc)
-   ctest --verbose
-   ```
-
-5. **📝 Commit and Push**
-   ```bash
-   git add .
-   git commit -m "feat: add support for new platform/feature"
-   git push origin feature/your-feature-name
-   ```
-
-6. **🔄 Create Pull Request**
-   - Fill out the pull request template
-   - Link any related issues
-   - Ensure CI passes
 
 ### Development Setup
 
@@ -1234,11 +1185,11 @@ vcpkg install cmake
 #### Building for Development
 
 ```bash
-git clone https://github.com/trlc/platform.git
+git clone https://github.com/tranglecong/platform.git
 cd trlc-platform
 
 # Create development build
-mkdir build-dev && cd build-dev
+mkdir build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Debug \
     -DTRLC_PLATFORM_BUILD_TESTS=ON \
@@ -1252,117 +1203,8 @@ make -j$(nproc)
 
 ```bash
 # Run all tests
-ctest --parallel 4
-
-# Run specific test categories
-ctest -R "platform" --verbose      # Platform detection tests
-ctest -R "features" --verbose      # Feature detection tests
-ctest -R "integration" --verbose   # Integration tests
-
-# Run tests with memory checking (if valgrind available)
-ctest -T memcheck
-
-# Generate coverage report (requires gcov/lcov)
-make coverage
-```
-
-### Coding Standards
-
-#### C++ Style Guidelines
-
-We follow the [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/) with these specific conventions:
-
-**Naming Conventions:**
-```cpp
-// Classes, Structs, Enums: PascalCase
-class PlatformDetector;
-struct CompilerInfo;
-enum class OperatingSystem;
-
-// Functions, Methods: camelCase
-constexpr bool hasFeature() noexcept;
-void initializePlatform();
-
-// Variables, Parameters: snake_case
-int pointer_size_bits;
-bool has_threading_support;
-
-// Private/Protected Members: underscore prefix
-class Example {
-private:
-    int _internal_state;
-    bool _is_initialized;
-};
-
-// Constants: UPPER_CASE
-static constexpr int MAX_BUFFER_SIZE = 4096;
-
-// Namespaces: snake_case
-namespace trlc::platform::traits;
-
-// Macros: UPPER_CASE with prefix
-#define TRLC_HAS_FEATURE(x) ...
-```
-
-**Code Formatting:**
-```cpp
-// Use clang-format with provided .clang-format
-clang-format -i include/trlc/platform/*.hpp
-
-// Indentation: 4 spaces (no tabs)
-if (condition) {
-    doSomething();
-}
-
-// Line length: 100 characters maximum
-constexpr bool hasVeryLongFunctionNameWithManyParameters(
-    const VeryLongParameterType& first_parameter,
-    const AnotherLongType& second_parameter) noexcept;
-
-// Include order: standard library, third-party, project headers
-#include <iostream>    // Standard library
-#include <vector>
-#include "external.h"  // Third-party
-#include "trlc/platform/core.hpp"  // Project headers
-```
-
-#### Documentation Standards
-
-**Header Documentation:**
-```cpp
-/**
- * @file platform.hpp
- * @brief Platform detection and abstraction utilities
- * 
- * This header provides compile-time platform detection capabilities
- * for cross-platform C++ development.
- * 
- * @author TRLC Platform Team
- * @version 1.0.0
- */
-```
-
-**Function Documentation:**
-```cpp
-/**
- * @brief Detect the current operating system at compile time
- * 
- * Performs compile-time detection of the target operating system
- * using compiler-defined macros and returns a strongly-typed enum.
- * 
- * @return OperatingSystem enum value representing the detected OS
- * 
- * @note This function is constexpr and has zero runtime overhead
- * 
- * @example
- * @code
- * constexpr auto os = getOperatingSystem();
- * if constexpr (os == OperatingSystem::windows) {
- *     // Windows-specific code
- * }
- * @endcode
- */
-constexpr OperatingSystem getOperatingSystem() noexcept;
+cd build
+ctest --output-on-failure --verbose
 ```
 
 ### Adding New Platform Support
@@ -1418,11 +1260,6 @@ TEST_CASE("Your Platform Detection", "[platform]") {
 #endif
 }
 ```
-
-#### 4. Update Documentation
-
-Update platform support table in README.md and add usage examples.
-
 ### Adding New Compiler Support
 
 #### 1. Compiler Detection
@@ -1500,126 +1337,6 @@ bool hasRuntimeFeature(RuntimeFeature feature) const noexcept {
     }
 }
 ```
-
-### Testing Guidelines
-
-#### Test Categories
-
-1. **Unit Tests**: Test individual functions and components
-2. **Integration Tests**: Test component interactions
-3. **Platform Tests**: Test platform-specific behavior
-4. **Performance Tests**: Verify zero-overhead characteristics
-
-#### Writing Tests
-
-```cpp
-#include <catch2/catch.hpp>
-#include "trlc/platform/core.hpp"
-
-TEST_CASE("Feature Detection", "[features]") {
-    SECTION("Language features are detected correctly") {
-        // Test compile-time feature detection
-        constexpr bool has_exceptions = hasFeature<LanguageFeature::exceptions>();
-        
-        #if defined(__cpp_exceptions)
-            REQUIRE(has_exceptions == true);
-        #else
-            REQUIRE(has_exceptions == false);
-        #endif
-    }
-    
-    SECTION("Runtime features work correctly") {
-        // Initialize platform for runtime features
-        initializePlatform();
-        
-        // Test runtime feature detection
-        bool has_sse = hasRuntimeFeature(RuntimeFeature::sse);
-        REQUIRE((has_sse == true || has_sse == false));  // Valid result
-    }
-}
-```
-
-### Pull Request Guidelines
-
-#### PR Title Format
-
-```
-type(scope): brief description
-
-Examples:
-feat(platform): add support for FreeBSD detection
-fix(compiler): correct MSVC version detection
-docs(readme): improve installation instructions
-test(features): add comprehensive SIMD detection tests
-```
-
-#### PR Description Template
-
-```markdown
-## Description
-Brief description of changes made.
-
-## Type of Change
-- [ ] Bug fix (non-breaking change fixing an issue)
-- [ ] New feature (non-breaking change adding functionality)
-- [ ] Breaking change (fix or feature causing existing functionality to change)
-- [ ] Documentation update
-
-## Testing
-- [ ] All existing tests pass
-- [ ] New tests added for new functionality
-- [ ] Manual testing performed on target platforms
-
-## Platforms Tested
-- [ ] Linux (GCC/Clang)
-- [ ] Windows (MSVC/MinGW)
-- [ ] macOS (Clang)
-- [ ] Other: ___________
-
-## Checklist
-- [ ] Code follows project style guidelines
-- [ ] Self-review completed
-- [ ] Documentation updated
-- [ ] No warnings in build output
-- [ ] Performance impact assessed (if applicable)
-```
-
-### Release Process
-
-For maintainers and core contributors:
-
-#### Version Numbering
-
-We follow [Semantic Versioning](https://semver.org/):
-- **MAJOR**: Breaking API changes
-- **MINOR**: New features, backward compatible
-- **PATCH**: Bug fixes, backward compatible
-
-#### Release Steps
-
-1. Update version numbers in relevant files
-2. Update CHANGELOG.md with release notes
-3. Create release tag: `git tag v1.x.x`
-4. Build and test release package
-5. Create GitHub release with binaries
-6. Update package manager configurations
-
-### Community Guidelines
-
-- **Be respectful**: Treat all contributors with respect and kindness
-- **Be constructive**: Provide helpful feedback and suggestions
-- **Be patient**: Remember that contributors have different experience levels
-- **Be collaborative**: Work together to improve the library
-
-### Recognition
-
-Contributors will be recognized in:
-- CONTRIBUTORS.md file
-- Release notes for significant contributions
-- GitHub contributor graphs
-- Special mentions for major features
-
-Thank you for contributing to TRLC Platform! 🚀
 
 ## License
 

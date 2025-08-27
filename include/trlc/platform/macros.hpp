@@ -28,8 +28,10 @@ namespace platform {
  * @return true if nodiscard is supported, false otherwise
  */
 constexpr bool supportsNodecard() noexcept {
-#ifdef __has_cpp_attribute
+#if defined(__has_cpp_attribute) && !defined(_MSC_VER)
     return __has_cpp_attribute(nodiscard) >= 201603L;
+#elif defined(_MSC_VER) && _MSC_VER >= 1911  // Visual Studio 2017 15.3
+    return true;
 #else
     return false;
 #endif
@@ -40,8 +42,10 @@ constexpr bool supportsNodecard() noexcept {
  * @return true if deprecated is supported, false otherwise
  */
 constexpr bool supportsDeprecated() noexcept {
-#ifdef __has_cpp_attribute
+#if defined(__has_cpp_attribute) && !defined(_MSC_VER)
     return __has_cpp_attribute(deprecated) >= 201309L;
+#elif defined(_MSC_VER)
+    return true;  // MSVC has always supported deprecated
 #else
     return false;
 #endif
@@ -52,8 +56,10 @@ constexpr bool supportsDeprecated() noexcept {
  * @return true if fallthrough is supported, false otherwise
  */
 constexpr bool supportsFallthrough() noexcept {
-#ifdef __has_cpp_attribute
+#if defined(__has_cpp_attribute) && !defined(_MSC_VER)
     return __has_cpp_attribute(fallthrough) >= 201603L;
+#elif defined(_MSC_VER) && _MSC_VER >= 1911  // Visual Studio 2017 15.3
+    return true;
 #else
     return false;
 #endif
@@ -82,8 +88,9 @@ constexpr bool hasAttributeSupport(const char* /* attribute_name */) noexcept {
  *
  * This macro provides a safe way to check for C++ attribute support.
  * Returns 0 if __has_cpp_attribute is not available.
+ * Note: MSVC doesn't support __has_cpp_attribute in C++17 mode.
  */
-#ifdef __has_cpp_attribute
+#if defined(__has_cpp_attribute) && !defined(_MSC_VER)
     #define TRLC_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
 #else
     #define TRLC_HAS_CPP_ATTRIBUTE(x) 0
@@ -118,6 +125,8 @@ constexpr bool hasAttributeSupport(const char* /* attribute_name */) noexcept {
  */
 #if TRLC_HAS_CPP_ATTRIBUTE(nodiscard) >= 201603L
     #define TRLC_NODISCARD [[nodiscard]]
+#elif defined(_MSC_VER) && _MSC_VER >= 1911  // Visual Studio 2017 15.3 supports [[nodiscard]]
+    #define TRLC_NODISCARD [[nodiscard]]
 #elif defined(__GNUC__) || defined(__clang__)
     #define TRLC_NODISCARD __attribute__((warn_unused_result))
 #elif defined(_MSC_VER) && _MSC_VER >= 1700
@@ -138,6 +147,8 @@ constexpr bool hasAttributeSupport(const char* /* attribute_name */) noexcept {
  * @endcode
  */
 #if TRLC_HAS_CPP_ATTRIBUTE(deprecated) >= 201309L
+    #define TRLC_DEPRECATED [[deprecated]]
+#elif defined(_MSC_VER) && _MSC_VER >= 1400  // MSVC has supported [[deprecated]] since VS2005
     #define TRLC_DEPRECATED [[deprecated]]
 #elif defined(__GNUC__) || defined(__clang__)
     #define TRLC_DEPRECATED __attribute__((deprecated))
@@ -160,6 +171,8 @@ constexpr bool hasAttributeSupport(const char* /* attribute_name */) noexcept {
  * @endcode
  */
 #if TRLC_HAS_CPP_ATTRIBUTE(deprecated) >= 201309L
+    #define TRLC_DEPRECATED_MSG(msg) [[deprecated(msg)]]
+#elif defined(_MSC_VER) && _MSC_VER >= 1400
     #define TRLC_DEPRECATED_MSG(msg) [[deprecated(msg)]]
 #elif defined(__GNUC__) || defined(__clang__)
     #define TRLC_DEPRECATED_MSG(msg) __attribute__((deprecated(msg)))
@@ -188,6 +201,8 @@ constexpr bool hasAttributeSupport(const char* /* attribute_name */) noexcept {
  * @endcode
  */
 #if TRLC_HAS_CPP_ATTRIBUTE(fallthrough) >= 201603L
+    #define TRLC_FALLTHROUGH [[fallthrough]]
+#elif defined(_MSC_VER) && _MSC_VER >= 1911  // Visual Studio 2017 15.3 supports [[fallthrough]]
     #define TRLC_FALLTHROUGH [[fallthrough]]
 #elif defined(__GNUC__) && __GNUC__ >= 7
     #define TRLC_FALLTHROUGH __attribute__((fallthrough))
