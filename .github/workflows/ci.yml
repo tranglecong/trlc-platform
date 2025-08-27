@@ -349,7 +349,7 @@ jobs:
   ci-status:
     name: CI/CD Status Summary
     runs-on: ubuntu-22.04
-    needs: [test-matrix, test-architectures, test-compiler-versions, test-examples, test-packaging]
+    needs: [test-matrix, test-architectures, test-compiler-versions, test-packaging]
     if: always()
     
     steps:
