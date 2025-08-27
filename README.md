@@ -1141,9 +1141,9 @@ set(CMAKE_CROSSCOMPILING TRUE)
 If you encounter issues not covered here:
 
 1. **Check the [Examples](examples/)** - Real-world usage patterns
-2. **Review [API Documentation](docs/)** - Comprehensive API reference
-3. **Search [GitHub Issues](https://github.com/tranglecong/platform/issues)** - Known issues and solutions
-4. **Create a [New Issue](https://github.com/tranglecong/platform/issues/new)** - Report bugs or request features
+2. **Review [API Documentation](https://tranglecong.github.io/trlc-platform)** - Comprehensive API reference
+3. **Search [GitHub Issues](https://github.com/tranglecong/trlc-platform/issues)** - Known issues and solutions
+4. **Create a [New Issue](https://github.com/tranglecong/trlc-platform/issues/new)** - Report bugs or request features
 
 Include in your issue report:
 - Compiler version and platform
