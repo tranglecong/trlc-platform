@@ -1,0 +1,27 @@
+var structtrlc_1_1platform_1_1FeatureSet =
+[
+    [ "hasLanguageFeature", "structtrlc_1_1platform_1_1FeatureSet.html#aa0ad1c82af0a846f162476473d2447ca", null ],
+    [ "hasRuntimeFeature", "structtrlc_1_1platform_1_1FeatureSet.html#ac341dcde3a4f8949ce04ee6b4fed81af", null ],
+    [ "has_address_sanitizer", "structtrlc_1_1platform_1_1FeatureSet.html#ae7af0d3ac230c8d836c169d9e1e42d97", null ],
+    [ "has_atomic", "structtrlc_1_1platform_1_1FeatureSet.html#a8eb3d3d387753050161e956cae00c6e0", null ],
+    [ "has_avx", "structtrlc_1_1platform_1_1FeatureSet.html#a870139e2d4038449d8819a8787af7bc4", null ],
+    [ "has_avx2", "structtrlc_1_1platform_1_1FeatureSet.html#a42b2ccdd85cfb51f093d9bd76f1d1046", null ],
+    [ "has_avx512f", "structtrlc_1_1platform_1_1FeatureSet.html#a488b72dd75273869f16d8fe41d89640f", null ],
+    [ "has_exceptions", "structtrlc_1_1platform_1_1FeatureSet.html#a3cda62333b03de6c0b2b3e685022818d", null ],
+    [ "has_hardware_aes", "structtrlc_1_1platform_1_1FeatureSet.html#a05d1a3eb910ad40164fcaad286040599", null ],
+    [ "has_hardware_random", "structtrlc_1_1platform_1_1FeatureSet.html#a57731be0d6775947fa57d0d26d087304", null ],
+    [ "has_inline_asm", "structtrlc_1_1platform_1_1FeatureSet.html#a30ab71f7f15cc437ee376e766556ce61", null ],
+    [ "has_memory_sanitizer", "structtrlc_1_1platform_1_1FeatureSet.html#a63049bb29fdc4f920a2cd72e6feca706", null ],
+    [ "has_neon", "structtrlc_1_1platform_1_1FeatureSet.html#a5f11203be30b21e380a7122b401dd59e", null ],
+    [ "has_rtti", "structtrlc_1_1platform_1_1FeatureSet.html#a3aeccecaca5d97d655a108a6eaa5f6f8", null ],
+    [ "has_sse", "structtrlc_1_1platform_1_1FeatureSet.html#a3dc1793d6906a235070483972c70a90f", null ],
+    [ "has_sse2", "structtrlc_1_1platform_1_1FeatureSet.html#a2a7e43f3e9419d0991b0cc47ea18409c", null ],
+    [ "has_sse3", "structtrlc_1_1platform_1_1FeatureSet.html#a791675b50d837259221e8bc6624089c1", null ],
+    [ "has_sse4_1", "structtrlc_1_1platform_1_1FeatureSet.html#ab20b60414f1f95130a2f629be4c08679", null ],
+    [ "has_sse4_2", "structtrlc_1_1platform_1_1FeatureSet.html#af4083777282318ac99b01709219bfec1", null ],
+    [ "has_stack_protection", "structtrlc_1_1platform_1_1FeatureSet.html#aa382c38046550c4efba449b0ea61bded", null ],
+    [ "has_thread_sanitizer", "structtrlc_1_1platform_1_1FeatureSet.html#af1b560acf65efaabb0824e403267db09", null ],
+    [ "has_threads", "structtrlc_1_1platform_1_1FeatureSet.html#a7fb0276983b7f0f777d0f54684cedd9a", null ],
+    [ "has_undefined_behavior_sanitizer", "structtrlc_1_1platform_1_1FeatureSet.html#a95c3c4373ede7bf0e11511ea6acc8dce", null ],
+    [ "has_vector_intrinsics", "structtrlc_1_1platform_1_1FeatureSet.html#a16aebc970adec4b346dd85d24321d037", null ]
+];

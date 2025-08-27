@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['server_327',['server',['../namespacetrlc_1_1platform.html#a5b3afd90dff78a6133c44a8fb3c52574acf1e8c14e54505f60aa10ceb8d5d8ab3',1,'trlc::platform']]],
+  ['setassertionhandler_328',['setAssertionHandler',['../classtrlc_1_1platform_1_1DebugUtils.html#ae3cb1aed68401a56f4d8e2c94e9be157',1,'trlc::platform::DebugUtils']]],
+  ['size_329',['size',['../structtrlc_1_1platform_1_1TypeInfo.html#a96514b116539c937b60259c7cb028695',1,'trlc::platform::TypeInfo']]],
+  ['sparc_330',['sparc',['../namespacetrlc_1_1platform.html#acccc4019642065f340c83e0d78511f7ca45f540823942570f0f663af23049a49d',1,'trlc::platform']]],
+  ['sparc_5f64_331',['sparc_64',['../namespacetrlc_1_1platform.html#acccc4019642065f340c83e0d78511f7ca9f6db1c2af57ff6bac255724ccb15066',1,'trlc::platform']]],
+  ['sse_332',['sse',['../namespacetrlc_1_1platform.html#af8024ec50e66dc197e2b45ff3c95c6dca64192ca465194480a4621d6905dac5b7',1,'trlc::platform']]],
+  ['sse2_333',['sse2',['../namespacetrlc_1_1platform.html#af8024ec50e66dc197e2b45ff3c95c6dca0303bb014717eba9fdeae96c3629fe5f',1,'trlc::platform']]],
+  ['sse3_334',['sse3',['../namespacetrlc_1_1platform.html#af8024ec50e66dc197e2b45ff3c95c6dca7cdc7261ebf2b2d468ff2d8e2e33c120',1,'trlc::platform']]],
+  ['sse4_5f1_335',['sse4_1',['../namespacetrlc_1_1platform.html#af8024ec50e66dc197e2b45ff3c95c6dca6c2276d9a0c64876641fa3879c0584f1',1,'trlc::platform']]],
+  ['sse4_5f2_336',['sse4_2',['../namespacetrlc_1_1platform.html#af8024ec50e66dc197e2b45ff3c95c6dcaf57617f0a71e2623c9110a083c459acc',1,'trlc::platform']]],
+  ['stack_5fprotection_337',['stack_protection',['../namespacetrlc_1_1platform.html#a726a8ec6488a71b130fd9d05ddc61097a912447d99f62e83a3dcf67916f847a3a',1,'trlc::platform']]],
+  ['standard_338',['standard',['../structtrlc_1_1platform_1_1CppStandardInfo.html#ac3990655af9fbc57182186bacb002379',1,'trlc::platform::CppStandardInfo']]],
+  ['standard_5fname_339',['standard_name',['../structtrlc_1_1platform_1_1CppStandardInfo.html#a28aa4e29fb556e0dc7d79cfb2e979bd7',1,'trlc::platform::CppStandardInfo']]],
+  ['string_340',['STRING',['../structtrlc_1_1platform_1_1Version.html#ad3ef50e8d9ea9e9c67153f489069436b',1,'trlc::platform::Version']]],
+  ['supportscachelinealignment_341',['supportsCacheLineAlignment',['../namespacetrlc_1_1platform.html#ab37b02be8db224a0cec00d5b2914697e',1,'trlc::platform']]],
+  ['supportscasesensitivefilesystem_342',['supportsCaseSensitiveFilesystem',['../namespacetrlc_1_1platform.html#ac66ec91e97749e6bb5d583ac9d529a63',1,'trlc::platform']]],
+  ['supportsdeprecated_343',['supportsDeprecated',['../namespacetrlc_1_1platform.html#a61fe02744543941432a7a5f7badb2167',1,'trlc::platform']]],
+  ['supportsfallthrough_344',['supportsFallthrough',['../namespacetrlc_1_1platform.html#a812a272b392c2c96d3c63028bb417859',1,'trlc::platform']]],
+  ['supportsfeature_345',['supportsFeature',['../structtrlc_1_1platform_1_1CppStandardInfo.html#aa1c33f91173b0449bdaa8c5706c7ab48',1,'trlc::platform::CppStandardInfo']]],
+  ['supportsinlineassembly_346',['supportsInlineAssembly',['../namespacetrlc_1_1platform.html#a2e43a8dfcd037ea76bd396f975f6e890',1,'trlc::platform']]],
+  ['supportsnodecard_347',['supportsNodecard',['../namespacetrlc_1_1platform.html#a95ca1e5a493eff8e9c33b48d8e57c27a',1,'trlc::platform']]],
+  ['supportsunalignedaccess_348',['supportsUnalignedAccess',['../structtrlc_1_1platform_1_1ArchitectureInfo.html#ac617ce633c9998bc04d030702ac22c54',1,'trlc::platform::ArchitectureInfo']]]
+];
