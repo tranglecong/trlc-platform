@@ -1,0 +1,645 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'examples/**'
+      - 'tests/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'examples/**'
+      - 'tests/**'
+  schedule:
+    # Run benchmarks weekly on Sunday at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      benchmark_type:
+        description: 'Benchmark type to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - compile-time
+        - runtime
+        - memory
+
+jobs:
+  #============================================================================
+  # Compile-Time Performance Benchmarks
+  #============================================================================
+  compile-time-benchmarks:
+    name: Compile-Time Performance
+    runs-on: ubuntu-22.04
+    if: github.event.inputs.benchmark_type == 'all' || github.event.inputs.benchmark_type == 'compile-time' || github.event.inputs.benchmark_type == ''
+    
+    strategy:
+      matrix:
+        compiler: [gcc-11, gcc-12, clang-14, clang-15]
+        std: [17, 20]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup compiler
+      run: |
+        sudo apt-get update
+        if [[ "${{ matrix.compiler }}" == gcc-* ]]; then
+          version=${matrix.compiler#gcc-}
+          sudo apt-get install -y gcc-${version} g++-${version}
+          echo "CC=gcc-${version}" >> $GITHUB_ENV
+          echo "CXX=g++-${version}" >> $GITHUB_ENV
+        elif [[ "${{ matrix.compiler }}" == clang-* ]]; then
+          version=${matrix.compiler#clang-}
+          sudo apt-get install -y clang-${version}
+          echo "CC=clang-${version}" >> $GITHUB_ENV
+          echo "CXX=clang++-${version}" >> $GITHUB_ENV
+        fi
+
+    - name: Install timing tools
+      run: |
+        sudo apt-get install -y time
+
+    - name: Benchmark header inclusion time
+      run: |
+        echo "⏱️  Benchmarking header inclusion for ${{ matrix.compiler }} C++${{ matrix.std }}"
+        
+        results_file="compile_time_${{ matrix.compiler }}_cpp${{ matrix.std }}.txt"
+        echo "Header Inclusion Benchmark Results" > $results_file
+        echo "Compiler: ${{ matrix.compiler }}" >> $results_file
+        echo "C++ Standard: ${{ matrix.std }}" >> $results_file
+        echo "Date: $(date)" >> $results_file
+        echo "=====================================" >> $results_file
+        echo "" >> $results_file
+        
+        # Test individual header compilation time
+        headers=(
+          "trlc/platform/core.hpp"
+          "trlc/platform/architecture.hpp"
+          "trlc/platform/compiler.hpp"
+          "trlc/platform/platform.hpp"
+          "trlc/platform/features.hpp"
+          "trlc/platform/endianness.hpp"
+          "trlc/platform/macros.hpp"
+        )
+        
+        for header in "${headers[@]}"; do
+          echo "Testing $header..." | tee -a $results_file
+          
+          # Create test file
+          cat > test_header.cpp << EOF
+        #include "$header"
+        int main() { return 0; }
+        EOF
+          
+          # Measure compilation time (3 runs, take average)
+          total_time=0
+          for i in {1..3}; do
+            start_time=$(date +%s.%N)
+            $CXX -I include -std=c++${{ matrix.std }} -O2 -c test_header.cpp -o test_header.o
+            end_time=$(date +%s.%N)
+            duration=$(echo "$end_time - $start_time" | bc -l)
+            total_time=$(echo "$total_time + $duration" | bc -l)
+          done
+          
+          avg_time=$(echo "scale=4; $total_time / 3" | bc -l)
+          echo "  Average compilation time: ${avg_time}s" | tee -a $results_file
+          
+          # Clean up
+          rm -f test_header.cpp test_header.o
+        done
+
+    - name: Benchmark full library compilation
+      run: |
+        results_file="compile_time_${{ matrix.compiler }}_cpp${{ matrix.std }}.txt"
+        echo "" >> $results_file
+        echo "Full Library Compilation:" >> $results_file
+        echo "=========================" >> $results_file
+        
+        # Test full library compilation
+        cat > test_full.cpp << 'EOF'
+        #include "trlc/platform/core.hpp"
+        
+        int main() {
+            // Force instantiation of key functions
+            constexpr auto arch = trlc::platform::getCpuArchitecture();
+            constexpr auto compiler = trlc::platform::getCompilerType();
+            constexpr auto info = trlc::platform::getArchitectureInfo();
+            
+            auto report = trlc::platform::createPlatformReport();
+            return static_cast<int>(arch);
+        }
+        EOF
+        
+        # Measure full compilation time
+        echo "Compiling full library test..." | tee -a $results_file
+        start_time=$(date +%s.%N)
+        $CXX -I include -std=c++${{ matrix.std }} -O2 test_full.cpp -o test_full
+        end_time=$(date +%s.%N)
+        duration=$(echo "$end_time - $start_time" | bc -l)
+        echo "  Full compilation time: ${duration}s" | tee -a $results_file
+        
+        # Test executable size
+        size=$(stat -c%s test_full)
+        echo "  Executable size: ${size} bytes" | tee -a $results_file
+        
+        # Clean up
+        rm -f test_full.cpp test_full
+
+    - name: Upload compile-time benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: compile-time-${{ matrix.compiler }}-cpp${{ matrix.std }}
+        path: compile_time_*.txt
+
+  #============================================================================
+  # Runtime Performance Benchmarks
+  #============================================================================
+  runtime-benchmarks:
+    name: Runtime Performance
+    runs-on: ubuntu-22.04
+    if: github.event.inputs.benchmark_type == 'all' || github.event.inputs.benchmark_type == 'runtime' || github.event.inputs.benchmark_type == ''
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install benchmark dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libbenchmark-dev \
+          libgoogle-perftools-dev \
+          valgrind
+
+    - name: Create runtime benchmarks
+      run: |
+        mkdir -p benchmarks
+        
+        # Create comprehensive benchmark suite
+        cat > benchmarks/platform_benchmarks.cpp << 'EOF'
+        #include <benchmark/benchmark.h>
+        #include "trlc/platform/core.hpp"
+        #include <vector>
+        #include <random>
+        
+        // Benchmark architecture detection
+        static void BM_ArchitectureDetection(benchmark::State& state) {
+            for (auto _ : state) {
+                benchmark::DoNotOptimize(trlc::platform::getCpuArchitecture());
+            }
+        }
+        BENCHMARK(BM_ArchitectureDetection);
+        
+        // Benchmark compiler detection
+        static void BM_CompilerDetection(benchmark::State& state) {
+            for (auto _ : state) {
+                benchmark::DoNotOptimize(trlc::platform::getCompilerType());
+            }
+        }
+        BENCHMARK(BM_CompilerDetection);
+        
+        // Benchmark platform report generation
+        static void BM_PlatformReport(benchmark::State& state) {
+            for (auto _ : state) {
+                auto report = trlc::platform::createPlatformReport();
+                benchmark::DoNotOptimize(report.generateSummary());
+            }
+        }
+        BENCHMARK(BM_PlatformReport);
+        
+        // Benchmark feature detection
+        static void BM_FeatureDetection(benchmark::State& state) {
+            for (auto _ : state) {
+                benchmark::DoNotOptimize(trlc::platform::hasSimdSupport());
+                benchmark::DoNotOptimize(trlc::platform::is64BitArchitecture());
+                benchmark::DoNotOptimize(trlc::platform::hasVectorInstructions());
+            }
+        }
+        BENCHMARK(BM_FeatureDetection);
+        
+        // Benchmark SIMD-aware algorithm selection
+        static void BM_SimdAwareProcessing(benchmark::State& state) {
+            std::vector<int> data(1000);
+            std::iota(data.begin(), data.end(), 0);
+            
+            for (auto _ : state) {
+                if constexpr (trlc::platform::hasSimdSupport()) {
+                    // Simulate SIMD processing
+                    int sum = 0;
+                    for (size_t i = 0; i < data.size(); i += 4) {
+                        sum += data[i] + data[i+1] + data[i+2] + data[i+3];
+                    }
+                    benchmark::DoNotOptimize(sum);
+                } else {
+                    // Scalar fallback
+                    int sum = 0;
+                    for (int val : data) {
+                        sum += val;
+                    }
+                    benchmark::DoNotOptimize(sum);
+                }
+            }
+            state.SetItemsProcessed(state.iterations() * data.size());
+        }
+        BENCHMARK(BM_SimdAwareProcessing);
+        
+        // Benchmark cache-aligned data access
+        static void BM_CacheAlignedAccess(benchmark::State& state) {
+            constexpr auto info = trlc::platform::getArchitectureInfo();
+            constexpr size_t size = 1024;
+            
+            alignas(info.cache_line_size) int aligned_data[size];
+            int unaligned_data[size];
+            
+            std::fill_n(aligned_data, size, 42);
+            std::fill_n(unaligned_data, size, 42);
+            
+            for (auto _ : state) {
+                // Access aligned data
+                int sum = 0;
+                for (size_t i = 0; i < size; ++i) {
+                    sum += aligned_data[i];
+                }
+                benchmark::DoNotOptimize(sum);
+            }
+            state.SetItemsProcessed(state.iterations() * size);
+        }
+        BENCHMARK(BM_CacheAlignedAccess);
+        
+        BENCHMARK_MAIN();
+        EOF
+
+    - name: Build and run benchmarks
+      run: |
+        cd benchmarks
+        
+        # Build benchmark
+        g++ -std=c++17 -O2 -I../include \
+            -lbenchmark -lpthread \
+            platform_benchmarks.cpp -o platform_benchmarks
+        
+        # Run benchmarks
+        echo "🏃 Running runtime performance benchmarks..."
+        ./platform_benchmarks --benchmark_format=json > benchmark_results.json
+        ./platform_benchmarks --benchmark_format=console > benchmark_results.txt
+        
+        echo "✅ Runtime benchmarks completed"
+
+    - name: Analyze benchmark results
+      run: |
+        cd benchmarks
+        
+        echo "📊 Runtime Benchmark Analysis" > analysis.txt
+        echo "============================" >> analysis.txt
+        echo "Date: $(date)" >> analysis.txt
+        echo "Compiler: $(g++ --version | head -1)" >> analysis.txt
+        echo "Architecture: $(uname -m)" >> analysis.txt
+        echo "CPU: $(cat /proc/cpuinfo | grep 'model name' | head -1 | cut -d: -f2)" >> analysis.txt
+        echo "" >> analysis.txt
+        
+        # Extract key metrics from JSON results
+        if [ -f "benchmark_results.json" ]; then
+          echo "Key Performance Metrics:" >> analysis.txt
+          echo "======================" >> analysis.txt
+          
+          # Use jq if available, otherwise parse manually
+          if command -v jq &> /dev/null; then
+            jq -r '.benchmarks[] | "\(.name): \(.real_time) ns/op"' benchmark_results.json >> analysis.txt
+          else
+            grep -o '"name":"[^"]*".*"real_time":[0-9.]*' benchmark_results.json | \
+            sed 's/"name":"\([^"]*\)".*"real_time":\([0-9.]*\)/\1: \2 ns\/op/' >> analysis.txt
+          fi
+        fi
+        
+        cat analysis.txt
+
+    - name: Upload runtime benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: runtime-benchmarks
+        path: |
+          benchmarks/benchmark_results.*
+          benchmarks/analysis.txt
+
+  #============================================================================
+  # Memory Usage Analysis
+  #============================================================================
+  memory-analysis:
+    name: Memory Usage Analysis
+    runs-on: ubuntu-22.04
+    if: github.event.inputs.benchmark_type == 'all' || github.event.inputs.benchmark_type == 'memory' || github.event.inputs.benchmark_type == ''
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install memory analysis tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          valgrind \
+          massif-visualizer \
+          heaptrack
+
+    - name: Create memory test application
+      run: |
+        cat > memory_test.cpp << 'EOF'
+        #include "trlc/platform/core.hpp"
+        #include <iostream>
+        #include <vector>
+        #include <memory>
+        
+        int main() {
+            std::cout << "Memory usage test for TRLC Platform library" << std::endl;
+            
+            // Test basic platform detection
+            constexpr auto arch = trlc::platform::getCpuArchitecture();
+            constexpr auto compiler = trlc::platform::getCompilerType();
+            constexpr auto info = trlc::platform::getArchitectureInfo();
+            
+            std::cout << "Architecture: " << static_cast<int>(arch) << std::endl;
+            std::cout << "Compiler: " << static_cast<int>(compiler) << std::endl;
+            std::cout << "64-bit: " << info.is64Bit() << std::endl;
+            
+            // Test platform report generation (heap allocation)
+            for (int i = 0; i < 100; ++i) {
+                auto report = trlc::platform::createPlatformReport();
+                auto summary = report.generateSummary();
+                
+                // Prevent optimization
+                if (summary.empty()) {
+                    std::cout << "Empty summary" << std::endl;
+                }
+            }
+            
+            // Test with containers
+            std::vector<std::string> reports;
+            for (int i = 0; i < 1000; ++i) {
+                auto report = trlc::platform::createPlatformReport();
+                reports.push_back(report.generateSummary());
+            }
+            
+            std::cout << "Generated " << reports.size() << " reports" << std::endl;
+            
+            return 0;
+        }
+        EOF
+
+    - name: Build memory test
+      run: |
+        g++ -std=c++17 -I include -O2 -g memory_test.cpp -o memory_test
+
+    - name: Run Valgrind memory analysis
+      run: |
+        echo "🔍 Running Valgrind memory analysis..."
+        
+        # Memory leak detection
+        valgrind --tool=memcheck \
+                 --leak-check=full \
+                 --show-leak-kinds=all \
+                 --track-origins=yes \
+                 --log-file=valgrind_memcheck.log \
+                 ./memory_test
+        
+        # Memory usage profiling
+        valgrind --tool=massif \
+                 --massif-out-file=massif.out \
+                 ./memory_test
+        
+        # Generate human-readable massif report
+        ms_print massif.out > massif_report.txt
+
+    - name: Analyze memory usage
+      run: |
+        echo "📊 Memory Usage Analysis" > memory_analysis.txt
+        echo "=======================" >> memory_analysis.txt
+        echo "Date: $(date)" >> memory_analysis.txt
+        echo "" >> memory_analysis.txt
+        
+        # Check for memory leaks
+        if grep -q "definitely lost: 0 bytes" valgrind_memcheck.log; then
+          echo "✅ No memory leaks detected" >> memory_analysis.txt
+        else
+          echo "⚠️  Potential memory leaks found:" >> memory_analysis.txt
+          grep "definitely lost\|possibly lost" valgrind_memcheck.log >> memory_analysis.txt
+        fi
+        
+        echo "" >> memory_analysis.txt
+        
+        # Extract peak memory usage from massif
+        peak_mem=$(grep "peak:" massif_report.txt | head -1 || echo "Peak memory: Not available")
+        echo "Peak memory usage: $peak_mem" >> memory_analysis.txt
+        
+        # Check for memory errors
+        if grep -q "ERROR SUMMARY: 0 errors" valgrind_memcheck.log; then
+          echo "✅ No memory errors detected" >> memory_analysis.txt
+        else
+          error_count=$(grep "ERROR SUMMARY:" valgrind_memcheck.log | tail -1)
+          echo "⚠️  Memory errors: $error_count" >> memory_analysis.txt
+        fi
+        
+        cat memory_analysis.txt
+
+    - name: Test executable size impact
+      run: |
+        echo "" >> memory_analysis.txt
+        echo "Executable Size Analysis:" >> memory_analysis.txt
+        echo "========================" >> memory_analysis.txt
+        
+        # Build minimal test
+        echo 'int main() { return 0; }' > minimal.cpp
+        g++ -std=c++17 -O2 minimal.cpp -o minimal
+        minimal_size=$(stat -c%s minimal)
+        
+        # Build with library
+        echo '#include "trlc/platform/core.hpp"
+        int main() { 
+            auto arch = trlc::platform::getCpuArchitecture();
+            return static_cast<int>(arch);
+        }' > with_library.cpp
+        g++ -std=c++17 -I include -O2 with_library.cpp -o with_library
+        library_size=$(stat -c%s with_library)
+        
+        # Calculate overhead
+        overhead=$((library_size - minimal_size))
+        
+        echo "Minimal executable: $minimal_size bytes" >> memory_analysis.txt
+        echo "With TRLC Platform: $library_size bytes" >> memory_analysis.txt
+        echo "Library overhead: $overhead bytes" >> memory_analysis.txt
+        
+        # Test header-only impact
+        echo "" >> memory_analysis.txt
+        echo "Header-Only Library Benefits:" >> memory_analysis.txt
+        echo "- No runtime linking overhead" >> memory_analysis.txt
+        echo "- Compile-time optimization opportunities" >> memory_analysis.txt
+        echo "- Dead code elimination by compiler" >> memory_analysis.txt
+
+    - name: Upload memory analysis results
+      uses: actions/upload-artifact@v4
+      with:
+        name: memory-analysis
+        path: |
+          valgrind_memcheck.log
+          massif.out
+          massif_report.txt
+          memory_analysis.txt
+
+  #============================================================================
+  # Performance Comparison (vs alternatives)
+  #============================================================================
+  performance-comparison:
+    name: Performance Comparison
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'schedule' || github.event.inputs.benchmark_type == 'all'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Create comparison benchmarks
+      run: |
+        mkdir -p comparison
+        
+        # Compare against traditional #ifdef approach
+        cat > comparison/traditional_vs_modern.cpp << 'EOF'
+        #include <benchmark/benchmark.h>
+        #include "trlc/platform/core.hpp"
+        
+        // Traditional approach simulation
+        static int traditional_arch_detection() {
+        #if defined(__x86_64__)
+            return 1;
+        #elif defined(__i386__)
+            return 2;
+        #elif defined(__aarch64__)
+            return 3;
+        #elif defined(__arm__)
+            return 4;
+        #else
+            return 0;
+        #endif
+        }
+        
+        // Modern TRLC approach
+        static int modern_arch_detection() {
+            return static_cast<int>(trlc::platform::getCpuArchitecture());
+        }
+        
+        static void BM_TraditionalApproach(benchmark::State& state) {
+            for (auto _ : state) {
+                benchmark::DoNotOptimize(traditional_arch_detection());
+            }
+        }
+        BENCHMARK(BM_TraditionalApproach);
+        
+        static void BM_ModernApproach(benchmark::State& state) {
+            for (auto _ : state) {
+                benchmark::DoNotOptimize(modern_arch_detection());
+            }
+        }
+        BENCHMARK(BM_ModernApproach);
+        
+        BENCHMARK_MAIN();
+        EOF
+
+    - name: Install benchmark tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libbenchmark-dev
+
+    - name: Run comparison benchmarks
+      run: |
+        cd comparison
+        
+        g++ -std=c++17 -O2 -I../include \
+            -lbenchmark -lpthread \
+            traditional_vs_modern.cpp -o comparison_bench
+        
+        ./comparison_bench --benchmark_format=console > comparison_results.txt
+        
+        echo "Performance comparison completed"
+        cat comparison_results.txt
+
+    - name: Upload comparison results
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-comparison
+        path: comparison/comparison_results.txt
+
+  #============================================================================
+  # Benchmark Summary Report
+  #============================================================================
+  benchmark-summary:
+    name: Benchmark Summary
+    runs-on: ubuntu-22.04
+    needs: [compile-time-benchmarks, runtime-benchmarks, memory-analysis]
+    if: always()
+    
+    steps:
+    - name: Download all benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        path: results/
+      continue-on-error: true
+
+    - name: Generate performance summary
+      run: |
+        echo "🚀 **TRLC Platform Performance Benchmark Summary**" >> $GITHUB_STEP_SUMMARY
+        echo "================================================" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### 📊 **Benchmark Results:**" >> $GITHUB_STEP_SUMMARY
+        echo "- **Compile-Time:** ${{ needs.compile-time-benchmarks.result == 'success' && '✅ COMPLETED' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Runtime Performance:** ${{ needs.runtime-benchmarks.result == 'success' && '✅ COMPLETED' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Memory Analysis:** ${{ needs.memory-analysis.result == 'success' && '✅ COMPLETED' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # List available results
+        echo "### 📁 **Available Reports:**" >> $GITHUB_STEP_SUMMARY
+        if [ -d "results" ]; then
+          find results -name "*.txt" -o -name "*.json" | while read file; do
+            basename_file=$(basename "$file")
+            echo "- 📄 $basename_file" >> $GITHUB_STEP_SUMMARY
+          done
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🎯 **Key Performance Characteristics:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ⚡ **Zero Runtime Overhead:** All detection occurs at compile time" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 **Fast Compilation:** Header-only design minimizes build impact" >> $GITHUB_STEP_SUMMARY
+        echo "- 💾 **Low Memory Footprint:** Minimal runtime memory usage" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔧 **Optimizable:** Enables aggressive compiler optimizations" >> $GITHUB_STEP_SUMMARY
+        echo "- 📈 **Scalable:** Performance independent of complexity" >> $GITHUB_STEP_SUMMARY
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📈 **Performance Status:**" >> $GITHUB_STEP_SUMMARY
+        
+        success_count=0
+        total_count=3
+        
+        if [ "${{ needs.compile-time-benchmarks.result }}" == "success" ]; then
+          success_count=$((success_count + 1))
+        fi
+        if [ "${{ needs.runtime-benchmarks.result }}" == "success" ]; then
+          success_count=$((success_count + 1))
+        fi
+        if [ "${{ needs.memory-analysis.result }}" == "success" ]; then
+          success_count=$((success_count + 1))
+        fi
+        
+        if [ "$success_count" -eq "$total_count" ]; then
+          echo "🟢 **Overall Status: EXCELLENT** - All benchmarks completed successfully" >> $GITHUB_STEP_SUMMARY
+        elif [ "$success_count" -gt 1 ]; then
+          echo "🟡 **Overall Status: GOOD** - Most benchmarks completed successfully" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "🔴 **Overall Status: NEEDS ATTENTION** - Multiple benchmark failures" >> $GITHUB_STEP_SUMMARY
+        fi

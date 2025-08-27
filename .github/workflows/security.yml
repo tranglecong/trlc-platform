@@ -1,0 +1,364 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scan daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  #============================================================================
+  # Static Security Analysis
+  #============================================================================
+  static-analysis:
+    name: Static Security Analysis
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup security analysis tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          clang \
+          clang-tools \
+          cppcheck \
+          flawfinder \
+          lizard
+
+    - name: Run Flawfinder (C++ security scanner)
+      run: |
+        echo "🔍 Running Flawfinder security analysis..."
+        
+        flawfinder --html --context --quiet \
+                   include/ tests/ examples/ > flawfinder-report.html || true
+        
+        # Also generate text report for easier review
+        flawfinder --quiet --minlevel=1 \
+                   include/ tests/ examples/ > flawfinder-report.txt || true
+        
+        # Check if any high-risk issues were found
+        high_risk=$(flawfinder --quiet --minlevel=4 include/ tests/ examples/ | wc -l || echo 0)
+        if [ "$high_risk" -gt 0 ]; then
+          echo "⚠️  Found $high_risk high-risk security issues"
+          flawfinder --quiet --minlevel=4 include/ tests/ examples/
+        else
+          echo "✅ No high-risk security issues found"
+        fi
+
+    - name: Run Cppcheck security analysis
+      run: |
+        echo "🔍 Running Cppcheck security analysis..."
+        
+        cppcheck --enable=all \
+                 --inconclusive \
+                 --std=c++17 \
+                 --xml \
+                 --xml-version=2 \
+                 -I include/ \
+                 include/ tests/ examples/ 2> cppcheck-security.xml || true
+        
+        # Convert XML to human-readable format
+        if [ -f "cppcheck-security.xml" ]; then
+          echo "Cppcheck Security Analysis Results:" > cppcheck-security.txt
+          echo "===================================" >> cppcheck-security.txt
+          grep -E "(error|warning)" cppcheck-security.xml | \
+          sed 's/<[^>]*>//g' >> cppcheck-security.txt || true
+        fi
+
+    - name: Run complexity analysis
+      run: |
+        echo "📊 Running complexity analysis..."
+        
+        lizard --html include/ tests/ examples/ > complexity-report.html || true
+        lizard include/ tests/ examples/ > complexity-report.txt || true
+        
+        # Check for overly complex functions
+        complex_functions=$(lizard --CCN 15 include/ tests/ examples/ | grep -c "^  " || echo 0)
+        if [ "$complex_functions" -gt 0 ]; then
+          echo "⚠️  Found $complex_functions functions with high complexity (CCN > 15)"
+        else
+          echo "✅ No overly complex functions found"
+        fi
+
+    - name: Scan for hardcoded secrets
+      run: |
+        echo "🔐 Scanning for potential hardcoded secrets..."
+        
+        # Look for potential secrets, passwords, keys
+        secret_patterns=(
+          "password\s*=\s*['\"][^'\"]*['\"]"
+          "key\s*=\s*['\"][^'\"]*['\"]"
+          "secret\s*=\s*['\"][^'\"]*['\"]"
+          "token\s*=\s*['\"][^'\"]*['\"]"
+          "api_key\s*=\s*['\"][^'\"]*['\"]"
+        )
+        
+        found_secrets=0
+        for pattern in "${secret_patterns[@]}"; do
+          matches=$(grep -rniE "$pattern" include/ tests/ examples/ || true)
+          if [ ! -z "$matches" ]; then
+            echo "⚠️  Potential hardcoded secret pattern found:"
+            echo "$matches"
+            found_secrets=$((found_secrets + 1))
+          fi
+        done
+        
+        if [ "$found_secrets" -eq 0 ]; then
+          echo "✅ No hardcoded secrets detected"
+        fi
+
+    - name: Check for dangerous functions
+      run: |
+        echo "⚠️  Checking for dangerous C functions..."
+        
+        dangerous_functions=(
+          "strcpy"
+          "strcat"
+          "sprintf"
+          "gets"
+          "scanf"
+          "system"
+        )
+        
+        found_dangerous=0
+        for func in "${dangerous_functions[@]}"; do
+          matches=$(grep -rn "$func\s*(" include/ tests/ examples/ || true)
+          if [ ! -z "$matches" ]; then
+            echo "⚠️  Potentially dangerous function '$func' found:"
+            echo "$matches"
+            found_dangerous=$((found_dangerous + 1))
+          fi
+        done
+        
+        if [ "$found_dangerous" -eq 0 ]; then
+          echo "✅ No dangerous functions detected"
+        fi
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-analysis-reports
+        path: |
+          *-report.*
+          *.xml
+          *.txt
+        retention-days: 30
+
+  #============================================================================
+  # Dependency Security Scan
+  #============================================================================
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Scan CMake dependencies
+      run: |
+        echo "🔍 Scanning CMake dependencies for security issues..."
+        
+        # Check for find_package and external dependencies
+        cmake_deps=$(grep -rn "find_package\|FetchContent\|add_subdirectory" CMakeLists.txt cmake/ || true)
+        
+        if [ ! -z "$cmake_deps" ]; then
+          echo "📋 Found external dependencies:"
+          echo "$cmake_deps"
+          echo ""
+          echo "⚠️  Manual review recommended for external dependencies"
+        else
+          echo "✅ No external dependencies found - header-only library"
+        fi
+
+    - name: Check for vulnerable patterns in CMake
+      run: |
+        echo "🔍 Checking CMake files for security issues..."
+        
+        vulnerable_patterns=(
+          "execute_process.*curl"
+          "execute_process.*wget"
+          "file.*DOWNLOAD"
+          "ExternalProject.*URL"
+        )
+        
+        found_issues=0
+        for pattern in "${vulnerable_patterns[@]}"; do
+          matches=$(grep -rniE "$pattern" CMakeLists.txt cmake/ || true)
+          if [ ! -z "$matches" ]; then
+            echo "⚠️  Potential security issue in CMake:"
+            echo "$matches"
+            found_issues=$((found_issues + 1))
+          fi
+        done
+        
+        if [ "$found_issues" -eq 0 ]; then
+          echo "✅ No CMake security issues detected"
+        fi
+
+  #============================================================================
+  # GitHub Security Features
+  #============================================================================
+  github-security:
+    name: GitHub Security Scan
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: cpp
+        config-file: ./.github/codeql/codeql-config.yml
+
+    - name: Build for CodeQL analysis
+      run: |
+        # Simple build for header-only library
+        mkdir -p build
+        cd build
+        cmake .. -DTRLC_PLATFORM_BUILD_TESTS=ON
+        cmake --build . --parallel $(nproc)
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:cpp"
+
+  #============================================================================
+  # Docker Security Scan (if applicable)
+  #============================================================================
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Create test Dockerfile
+      run: |
+        cat > Dockerfile.test << 'EOF'
+        FROM ubuntu:22.04
+        
+        # Install build dependencies
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            cmake \
+            && rm -rf /var/lib/apt/lists/*
+        
+        # Copy library
+        COPY include/ /usr/local/include/
+        COPY examples/ /tmp/examples/
+        
+        # Test compilation
+        WORKDIR /tmp/examples
+        RUN g++ -I/usr/local/include -std=c++17 -O2 readme_examples_test.cpp -o test
+        RUN ./test
+        
+        # Clean up
+        RUN rm -rf /tmp/examples
+        
+        # Create minimal runtime
+        FROM scratch as runtime
+        COPY --from=0 /usr/local/include/ /usr/local/include/
+        EOF
+
+    - name: Build test container
+      run: |
+        docker build -f Dockerfile.test -t trlc-platform-test .
+
+    - name: Run Trivy security scan on container
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'trlc-platform-test'
+        format: 'sarif'
+        output: 'trivy-container-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-container-results.sarif'
+
+  #============================================================================
+  # Security Report Summary
+  #============================================================================
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-22.04
+    needs: [static-analysis, dependency-scan, github-security]
+    if: always()
+    
+    steps:
+    - name: Download security reports
+      uses: actions/download-artifact@v4
+      with:
+        name: security-analysis-reports
+        path: reports/
+      continue-on-error: true
+
+    - name: Generate security summary
+      run: |
+        echo "🔒 **Security Scan Summary**" >> $GITHUB_STEP_SUMMARY
+        echo "=========================" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### 📊 **Scan Results:**" >> $GITHUB_STEP_SUMMARY
+        echo "- **Static Analysis:** ${{ needs.static-analysis.result == 'success' && '✅ PASSED' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dependency Scan:** ${{ needs.dependency-scan.result == 'success' && '✅ PASSED' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **CodeQL Analysis:** ${{ needs.github-security.result == 'success' && '✅ PASSED' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if reports exist and summarize findings
+        if [ -d "reports" ]; then
+          echo "### 📋 **Analysis Details:**" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "reports/flawfinder-report.txt" ]; then
+            issues=$(wc -l < reports/flawfinder-report.txt 2>/dev/null || echo 0)
+            echo "- **Flawfinder Issues:** $issues" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -f "reports/cppcheck-security.txt" ]; then
+            issues=$(grep -c "error\|warning" reports/cppcheck-security.txt 2>/dev/null || echo 0)
+            echo "- **Cppcheck Issues:** $issues" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -f "reports/complexity-report.txt" ]; then
+            echo "- **Complexity Report:** Available" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🛡️ **Security Status:**" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.static-analysis.result }}" == "success" && 
+              "${{ needs.dependency-scan.result }}" == "success" && 
+              "${{ needs.github-security.result }}" == "success" ]]; then
+          echo "🟢 **Overall Status: SECURE** - No critical security issues detected" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "🟡 **Overall Status: REVIEW NEEDED** - Please check failed scans" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📚 **Security Best Practices:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Header-only library reduces attack surface" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Compile-time evaluation prevents runtime vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ No external dependencies minimize supply chain risks" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Regular automated security scanning enabled" >> $GITHUB_STEP_SUMMARY

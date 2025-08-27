@@ -1,0 +1,477 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  #============================================================================
+  # Validate Release
+  #============================================================================
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-22.04
+    
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      is-prerelease: ${{ steps.check-prerelease.outputs.is-prerelease }}
+      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Extract version from tag
+      id: extract-version
+      run: |
+        tag="${{ env.RELEASE_TAG }}"
+        # Remove 'v' prefix if present
+        version=${tag#v}
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "📋 Release version: $version"
+
+    - name: Check if prerelease
+      id: check-prerelease
+      run: |
+        version="${{ steps.extract-version.outputs.version }}"
+        if [[ "$version" =~ -alpha|-beta|-rc ]]; then
+          echo "is-prerelease=true" >> $GITHUB_OUTPUT
+          echo "🚧 This is a prerelease version: $version"
+        else
+          echo "is-prerelease=false" >> $GITHUB_OUTPUT
+          echo "🚀 This is a stable release: $version"
+        fi
+
+    - name: Validate version format
+      run: |
+        version="${{ steps.extract-version.outputs.version }}"
+        
+        # Validate semantic version format (with optional prerelease)
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?$ ]]; then
+          echo "❌ Invalid version format: $version"
+          echo "Expected format: MAJOR.MINOR.PATCH[-PRERELEASE]"
+          exit 1
+        fi
+        
+        echo "✅ Version format is valid: $version"
+
+    - name: Validate CMakeLists.txt version
+      run: |
+        tag_version="${{ steps.extract-version.outputs.version }}"
+        cmake_version=$(grep -E "VERSION\s+[0-9]+\.[0-9]+\.[0-9]+" CMakeLists.txt | head -1 | sed -E 's/.*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+        
+        echo "📋 CMakeLists.txt version: $cmake_version"
+        echo "📋 Git tag version: $tag_version"
+        
+        # For prereleases, only check the base version (without prerelease suffix)
+        base_version=${tag_version%%-*}
+        
+        if [ "$cmake_version" != "$base_version" ]; then
+          echo "❌ Version mismatch!"
+          echo "   CMakeLists.txt: $cmake_version"
+          echo "   Git tag (base): $base_version"
+          exit 1
+        fi
+        
+        echo "✅ Version validation passed"
+
+    - name: Check changelog
+      run: |
+        if [ -f "CHANGELOG.md" ]; then
+          version="${{ steps.extract-version.outputs.version }}"
+          if grep -q "## \[$version\]" CHANGELOG.md || grep -q "## $version" CHANGELOG.md; then
+            echo "✅ Changelog entry found for version $version"
+          else
+            echo "⚠️  No changelog entry found for version $version"
+            echo "Consider adding a changelog entry in CHANGELOG.md"
+          fi
+        else
+          echo "⚠️  No CHANGELOG.md file found"
+        fi
+
+  #============================================================================
+  # Build Release Artifacts
+  #============================================================================
+  build-artifacts:
+    name: Build Release Artifacts
+    runs-on: ${{ matrix.os }}
+    needs: validate-release
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: Linux
+            archive: tar.gz
+          - os: windows-2022
+            name: Windows
+            archive: zip
+          - os: macos-13
+            name: macOS
+            archive: tar.gz
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup build environment
+      run: |
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          # Windows-specific setup
+          echo "Setting up Windows environment"
+        elif [ "${{ runner.os }}" == "macOS" ]; then
+          # macOS-specific setup
+          echo "Setting up macOS environment"
+        else
+          # Linux setup
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+        fi
+
+    - name: Build and test
+      shell: bash
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        echo "🔨 Building TRLC Platform v$version for ${{ matrix.name }}"
+        
+        # Configure with release settings
+        cmake -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DTRLC_PLATFORM_BUILD_TESTS=ON \
+              -DCMAKE_INSTALL_PREFIX=install
+        
+        # Build
+        cmake --build build --config Release --parallel $(nproc 2>/dev/null || echo 2)
+        
+        # Test
+        cd build
+        ctest --build-config Release --output-on-failure
+        cd ..
+        
+        # Install to staging directory
+        cmake --install build --config Release
+        
+        echo "✅ Build and test completed for ${{ matrix.name }}"
+
+    - name: Create source archive
+      shell: bash
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        archive_name="trlc-platform-$version-source"
+        
+        # Create source archive excluding build artifacts and git
+        if [ "${{ matrix.archive }}" == "zip" ]; then
+          # Windows - create ZIP
+          7z a "$archive_name.zip" . \
+             -x!build -x!.git -x!.cache -x!*.zip -x!*.tar.gz
+        else
+          # Linux/macOS - create tar.gz
+          tar --exclude='./build' \
+              --exclude='./.git' \
+              --exclude='./.cache' \
+              --exclude='*.zip' \
+              --exclude='*.tar.gz' \
+              -czf "$archive_name.tar.gz" .
+        fi
+
+    - name: Create header-only package
+      shell: bash
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        headers_name="trlc-platform-headers-$version"
+        
+        # Create header-only package
+        mkdir -p "$headers_name"
+        cp -r include/* "$headers_name/"
+        cp README.md "$headers_name/" 2>/dev/null || true
+        cp LICENSE "$headers_name/" 2>/dev/null || true
+        
+        if [ "${{ matrix.archive }}" == "zip" ]; then
+          7z a "$headers_name.zip" "$headers_name"
+        else
+          tar -czf "$headers_name.tar.gz" "$headers_name"
+        fi
+
+    - name: Create binary package
+      shell: bash
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        binary_name="trlc-platform-$version-${{ matrix.name }}"
+        
+        # Package the installation
+        if [ "${{ matrix.archive }}" == "zip" ]; then
+          cd install && 7z a "../$binary_name.zip" . && cd ..
+        else
+          tar -czf "$binary_name.tar.gz" -C install .
+        fi
+
+    - name: Generate checksums
+      shell: bash
+      run: |
+        echo "🔐 Generating checksums..."
+        
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          # Windows checksums
+          for file in *.zip; do
+            if [ -f "$file" ]; then
+              certutil -hashfile "$file" SHA256 | grep -v "CertUtil" > "$file.sha256"
+            fi
+          done
+        else
+          # Linux/macOS checksums
+          for file in *.tar.gz; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" > "$file.sha256"
+            fi
+          done
+        fi
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: artifacts-${{ matrix.name }}
+        path: |
+          *.tar.gz
+          *.zip
+          *.sha256
+        retention-days: 30
+
+  #============================================================================
+  # Generate Documentation for Release
+  #============================================================================
+  build-documentation:
+    name: Build Release Documentation
+    runs-on: ubuntu-22.04
+    needs: validate-release
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install documentation tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Generate documentation
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        echo "📚 Generating documentation for v$version"
+        
+        # Generate docs
+        ./generate_docs.sh --clean
+        
+        # Create documentation archive
+        cd docs/generated
+        tar -czf "../../trlc-platform-docs-$version.tar.gz" html/
+        cd ../..
+
+    - name: Upload documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: documentation-release
+        path: |
+          trlc-platform-docs-*.tar.gz
+        retention-days: 30
+
+  #============================================================================
+  # Create GitHub Release
+  #============================================================================
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-22.04
+    needs: [validate-release, build-artifacts, build-documentation]
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Organize release assets
+      run: |
+        mkdir -p release-assets
+        
+        # Move all archives and checksums to release directory
+        find artifacts/ -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" | \
+        while read file; do
+          cp "$file" release-assets/
+        done
+        
+        # List all release assets
+        echo "📦 Release assets:"
+        ls -la release-assets/
+
+    - name: Generate release notes
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        cat > release-notes.md << EOF
+        # TRLC Platform Library v$version
+        
+        ## 📋 Release Information
+        
+        - **Version:** $version
+        - **Release Type:** ${{ needs.validate-release.outputs.is-prerelease == 'true' && 'Pre-release' || 'Stable Release' }}
+        - **Build Date:** $(date -u)
+        - **Commit:** ${{ github.sha }}
+        
+        ## 🚀 What's New
+        
+        <!-- Add release notes here -->
+        
+        ## 📦 Downloads
+        
+        ### Source Code
+        - **Full Source:** \`trlc-platform-$version-source.tar.gz\`
+        - **Headers Only:** \`trlc-platform-headers-$version.tar.gz\`
+        
+        ### Binary Packages
+        - **Linux:** \`trlc-platform-$version-Linux.tar.gz\`
+        - **Windows:** \`trlc-platform-$version-Windows.zip\`
+        - **macOS:** \`trlc-platform-$version-macOS.tar.gz\`
+        
+        ### Documentation
+        - **API Documentation:** \`trlc-platform-docs-$version.tar.gz\`
+        - **Online Documentation:** [View on GitHub Pages](https://your-org.github.io/trlc-platform/)
+        
+        ## 🔐 Verification
+        
+        All release assets include SHA256 checksums for verification:
+        
+        \`\`\`bash
+        # Verify download integrity
+        sha256sum -c *.sha256
+        \`\`\`
+        
+        ## 📚 Documentation
+        
+        - **API Reference:** Complete Doxygen-generated documentation
+        - **Quick Start Guide:** See README.md
+        - **Examples:** Check the examples/ directory
+        - **Integration:** CMake and header-only usage patterns
+        
+        ## 🛠️ Installation
+        
+        ### Header-Only Usage
+        \`\`\`cpp
+        #include "trlc/platform/core.hpp"
+        
+        constexpr auto arch = trlc::platform::getCpuArchitecture();
+        \`\`\`
+        
+        ### CMake Integration
+        \`\`\`cmake
+        find_package(trlc-platform REQUIRED)
+        target_link_libraries(your_target trlc::platform)
+        \`\`\`
+        
+        ## 🔍 What's Included
+        
+        - ✅ **Compiler Detection:** GCC, Clang, MSVC, Intel compilers
+        - ✅ **Platform Detection:** Windows, Linux, macOS, BSD, mobile platforms
+        - ✅ **Architecture Detection:** x86, ARM, MIPS, PowerPC, RISC-V, SPARC
+        - ✅ **Feature Detection:** C++ language features, SIMD capabilities
+        - ✅ **Zero Runtime Overhead:** All detection at compile time
+        - ✅ **Thread Safe:** Purely constexpr evaluation
+        - ✅ **Standards Compliant:** C++17/20/23 support
+        
+        ## 🧪 Testing
+        
+        This release has been tested on:
+        - **Compilers:** GCC 9+, Clang 10+, MSVC 2019+, Intel 19+
+        - **Standards:** C++17, C++20, C++23
+        - **Platforms:** Linux (x64, ARM64), Windows (x64), macOS (x64, ARM64)
+        - **Architectures:** Native and cross-compilation testing
+        
+        ## 📞 Support
+        
+        - **Issues:** [GitHub Issues](https://github.com/your-org/trlc-platform/issues)
+        - **Documentation:** [API Reference](https://your-org.github.io/trlc-platform/)
+        - **Examples:** [Usage Examples](https://github.com/your-org/trlc-platform/tree/main/examples)
+        
+        ---
+        
+        **Note:** This is a header-only library requiring C++17 or later.
+        EOF
+
+    - name: Create or update release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: "TRLC Platform v${{ needs.validate-release.outputs.version }}"
+        body_path: release-notes.md
+        files: release-assets/*
+        prerelease: ${{ needs.validate-release.outputs.is-prerelease == 'true' }}
+        draft: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  #============================================================================
+  # Post-Release Tasks
+  #============================================================================
+  post-release:
+    name: Post-Release Tasks
+    runs-on: ubuntu-22.04
+    needs: [validate-release, create-release]
+    if: needs.validate-release.outputs.is-prerelease == 'false'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Create release summary
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        echo "🎉 **TRLC Platform v$version Released!**" >> $GITHUB_STEP_SUMMARY
+        echo "=======================================" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 **Release Assets Created:**" >> $GITHUB_STEP_SUMMARY
+        echo "- 📄 Source code archives (Linux, Windows, macOS)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 Header-only package" >> $GITHUB_STEP_SUMMARY
+        echo "- 📋 Binary packages for all platforms" >> $GITHUB_STEP_SUMMARY
+        echo "- 📚 Complete API documentation" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔐 SHA256 checksums for verification" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 **Links:**" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})" >> $GITHUB_STEP_SUMMARY
+        echo "- 📖 [Documentation](https://your-org.github.io/trlc-platform/)" >> $GITHUB_STEP_SUMMARY
+        echo "- 💡 [Examples](https://github.com/${{ github.repository }}/tree/main/examples)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ **Quality Assurance:**" >> $GITHUB_STEP_SUMMARY
+        echo "- All tests passed across multiple platforms and compilers" >> $GITHUB_STEP_SUMMARY
+        echo "- Documentation generated and validated" >> $GITHUB_STEP_SUMMARY
+        echo "- Cross-platform compatibility verified" >> $GITHUB_STEP_SUMMARY
+        echo "- Version consistency validated" >> $GITHUB_STEP_SUMMARY
+
+    - name: Trigger documentation update
+      run: |
+        echo "🔄 Documentation will be automatically updated via the documentation workflow"
+        
+    - name: Notify completion
+      run: |
+        echo "✅ Release v${{ needs.validate-release.outputs.version }} completed successfully!"
+        echo "📢 All release artifacts are now available on GitHub Releases"

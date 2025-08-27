@@ -1,0 +1,611 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*', 'release/*', 'hotfix/*' ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+# Allow manual triggering of workflow
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'Release'
+        type: choice
+        options:
+        - Release
+        - Debug
+        - RelWithDebInfo
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: ${{ github.event.inputs.build_type || 'Release' }}
+
+jobs:
+  #============================================================================
+  # Code Quality and Static Analysis
+  #============================================================================
+  code-quality:
+    name: Code Quality & Static Analysis
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better analysis
+    
+    - name: Setup C++ environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          clang-tidy \
+          clang-format \
+          cppcheck \
+          clang-tools \
+          iwyu
+    
+    - name: Run clang-format check
+      run: |
+        find include tests examples -name "*.hpp" -o -name "*.cpp" | \
+        xargs clang-format --dry-run --Werror --style=file || {
+          echo "❌ Code formatting issues found. Run clang-format to fix."
+          exit 1
+        }
+    
+    - name: Run cppcheck static analysis
+      run: |
+        cppcheck --enable=all \
+                 --inconclusive \
+                 --std=c++17 \
+                 --error-exitcode=1 \
+                 --suppress=missingIncludeSystem \
+                 --suppress=unusedFunction \
+                 --suppress=unmatchedSuppression \
+                 -I include/ \
+                 include/ tests/ examples/ 2>&1 | tee cppcheck-report.txt
+    
+    - name: Upload static analysis results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: static-analysis-results
+        path: cppcheck-report.txt
+
+  #============================================================================
+  # Cross-Platform Testing Matrix
+  #============================================================================
+  test-matrix:
+    name: Test on ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    needs: code-quality
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # Linux builds
+          - {
+              name: "Ubuntu 22.04 GCC 11",
+              os: ubuntu-22.04,
+              compiler: gcc,
+              version: "11",
+              std: "17 20 23"
+            }
+          - {
+              name: "Ubuntu 22.04 GCC 12", 
+              os: ubuntu-22.04,
+              compiler: gcc,
+              version: "12",
+              std: "17 20 23"
+            }
+          - {
+              name: "Ubuntu 22.04 Clang 14",
+              os: ubuntu-22.04,
+              compiler: clang,
+              version: "14",
+              std: "17 20 23"
+            }
+          - {
+              name: "Ubuntu 22.04 Clang 15",
+              os: ubuntu-22.04,
+              compiler: clang,
+              version: "15", 
+              std: "17 20 23"
+            }
+          
+          # macOS builds
+          - {
+              name: "macOS 12 Clang",
+              os: macos-12,
+              compiler: clang,
+              version: "default",
+              std: "17 20"
+            }
+          - {
+              name: "macOS 13 Clang",
+              os: macos-13,
+              compiler: clang,
+              version: "default",
+              std: "17 20 23"
+            }
+          
+          # Windows builds
+          - {
+              name: "Windows 2022 MSVC 2022",
+              os: windows-2022,
+              compiler: msvc,
+              version: "2022",
+              std: "17 20"
+            }
+          - {
+              name: "Windows 2022 MinGW",
+              os: windows-2022,
+              compiler: mingw,
+              version: "latest",
+              std: "17 20"
+            }
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup compiler (Linux GCC)
+      if: runner.os == 'Linux' && matrix.config.compiler == 'gcc'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-${{ matrix.config.version }} g++-${{ matrix.config.version }}
+        echo "CC=gcc-${{ matrix.config.version }}" >> $GITHUB_ENV
+        echo "CXX=g++-${{ matrix.config.version }}" >> $GITHUB_ENV
+
+    - name: Setup compiler (Linux Clang)
+      if: runner.os == 'Linux' && matrix.config.compiler == 'clang'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-${{ matrix.config.version }}
+        echo "CC=clang-${{ matrix.config.version }}" >> $GITHUB_ENV
+        echo "CXX=clang++-${{ matrix.config.version }}" >> $GITHUB_ENV
+
+    - name: Setup compiler (Windows MinGW)
+      if: runner.os == 'Windows' && matrix.config.compiler == 'mingw'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+
+    - name: Setup MSVC environment
+      if: runner.os == 'Windows' && matrix.config.compiler == 'msvc'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install CMake
+      uses: lukka/get-cmake@latest
+
+    - name: Test each C++ standard
+      shell: bash
+      run: |
+        set -e
+        
+        for std in ${{ matrix.config.std }}; do
+          echo "🧪 Testing C++${std}"
+          echo "==============================================="
+          
+          build_dir="build-cpp${std}"
+          
+          # Configure
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.config.compiler }}" == "mingw" ]]; then
+            # MinGW specific configuration
+            cmake -B $build_dir \
+                  -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+                  -DCMAKE_CXX_STANDARD=${std} \
+                  -DTRLC_PLATFORM_BUILD_TESTS=ON \
+                  -G "MinGW Makefiles"
+          else
+            cmake -B $build_dir \
+                  -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+                  -DCMAKE_CXX_STANDARD=${std} \
+                  -DTRLC_PLATFORM_BUILD_TESTS=ON
+          fi
+          
+          # Build
+          cmake --build $build_dir --config ${{ env.BUILD_TYPE }} --parallel $(nproc 2>/dev/null || echo 2)
+          
+          # Test
+          cd $build_dir
+          ctest --build-config ${{ env.BUILD_TYPE }} --output-on-failure --verbose
+          cd ..
+          
+          echo "✅ C++${std} tests passed"
+          echo ""
+        done
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.config.name }}-${{ env.BUILD_TYPE }}
+        path: |
+          build-*/Testing/
+          build-*/test_reports/
+
+  #============================================================================
+  # Architecture-Specific Testing
+  #============================================================================
+  test-architectures:
+    name: Test Architecture Detection on ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    needs: code-quality
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: "x86_64"
+            runner: ubuntu-22.04
+          - arch: "arm64" 
+            runner: ubuntu-22.04
+          # Note: GitHub doesn't provide native ARM runners yet,
+          # so we'll use emulation for ARM testing
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup QEMU for ARM emulation
+      if: matrix.arch != 'x86_64'
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Test architecture detection
+      run: |
+        if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+          # Native x86_64 testing
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRLC_PLATFORM_BUILD_TESTS=ON
+          cmake --build build --parallel $(nproc)
+          cd build && ctest --output-on-failure
+        else
+          # ARM64 testing via Docker emulation
+          docker run --rm --platform linux/arm64 \
+            -v $PWD:/workspace -w /workspace \
+            arm64v8/ubuntu:22.04 bash -c "
+              apt-get update && apt-get install -y build-essential cmake
+              cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRLC_PLATFORM_BUILD_TESTS=ON
+              cmake --build build --parallel \$(nproc)
+              cd build && ctest --output-on-failure
+            "
+        fi
+
+  #============================================================================
+  # Compiler Compatibility Testing
+  #============================================================================
+  test-compiler-versions:
+    name: Extended Compiler Testing
+    runs-on: ubuntu-22.04
+    needs: test-matrix
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Older GCC versions (minimum supported)
+          - compiler: gcc-9
+            std: "17"
+          - compiler: gcc-10  
+            std: "17 20"
+          
+          # Older Clang versions (minimum supported)
+          - compiler: clang-10
+            std: "17"
+          - compiler: clang-11
+            std: "17 20"
+          - compiler: clang-12
+            std: "17 20"
+          
+          # Latest versions for future compatibility
+          - compiler: gcc-13
+            std: "17 20 23"
+          - compiler: clang-16
+            std: "17 20 23"
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup compiler
+      run: |
+        sudo apt-get update
+        if [[ "${{ matrix.compiler }}" == gcc-* ]]; then
+          version=${matrix.compiler#gcc-}
+          sudo apt-get install -y gcc-${version} g++-${version}
+          echo "CC=gcc-${version}" >> $GITHUB_ENV
+          echo "CXX=g++-${version}" >> $GITHUB_ENV
+        elif [[ "${{ matrix.compiler }}" == clang-* ]]; then
+          version=${matrix.compiler#clang-}
+          sudo apt-get install -y clang-${version}
+          echo "CC=clang-${version}" >> $GITHUB_ENV
+          echo "CXX=clang++-${version}" >> $GITHUB_ENV
+        fi
+
+    - name: Test C++ standards
+      run: |
+        for std in ${{ matrix.std }}; do
+          echo "🧪 Testing ${{ matrix.compiler }} with C++${std}"
+          
+          cmake -B build-${std} \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_CXX_STANDARD=${std} \
+                -DTRLC_PLATFORM_BUILD_TESTS=ON
+          
+          cmake --build build-${std} --parallel $(nproc)
+          cd build-${std} && ctest --output-on-failure
+          cd ..
+          
+          echo "✅ ${{ matrix.compiler }} C++${std} passed"
+        done
+
+  #============================================================================
+  # Build Examples and Integration Tests
+  #============================================================================
+  test-examples:
+    name: Build and Test Examples
+    runs-on: ubuntu-22.04
+    needs: test-matrix
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build examples with different configurations
+      run: |
+        # Test header-only usage
+        echo "🧪 Testing header-only usage"
+        cd examples
+        g++ -I../include -std=c++17 -O2 readme_examples_test.cpp -o readme_test
+        ./readme_test
+        
+        # Test CMake integration
+        echo "🧪 Testing CMake integration"
+        cd ..
+        cmake -B build-examples \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DTRLC_PLATFORM_BUILD_TESTS=ON
+        cmake --build build-examples --target examples --parallel $(nproc)
+        
+        # Run example applications
+        echo "🧪 Running example applications"
+        cd build-examples/examples
+        for example in $(find . -type f -executable); do
+          echo "Running $example"
+          $example
+        done
+
+  #============================================================================
+  # Documentation Generation and Validation
+  #============================================================================
+  documentation:
+    name: Generate and Validate Documentation
+    runs-on: ubuntu-22.04
+    needs: code-quality
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install documentation tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Generate documentation
+      run: |
+        ./generate_docs.sh --clean
+        
+        # Validate documentation was generated
+        if [ ! -f "docs/generated/html/index.html" ]; then
+          echo "❌ Documentation generation failed"
+          exit 1
+        fi
+        
+        echo "✅ Documentation generated successfully"
+
+    - name: Check documentation completeness
+      run: |
+        # Count documented functions
+        undocumented=$(grep -r "warning.*undocumented" docs/generated/ || true)
+        if [ ! -z "$undocumented" ]; then
+          echo "⚠️  Found undocumented functions:"
+          echo "$undocumented"
+        fi
+        
+        # Check for broken links (basic check)
+        find docs/generated/html -name "*.html" -exec grep -l "href.*#.*not found" {} \; | \
+        while read file; do
+          echo "⚠️  Potential broken links in $file"
+        done
+
+    - name: Upload documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: documentation
+        path: docs/generated/html/
+        retention-days: 30
+
+  #============================================================================
+  # Performance Benchmarks (if applicable)
+  #============================================================================
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-22.04
+    needs: test-matrix
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup benchmark environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libbenchmark-dev
+
+    - name: Run compile-time benchmarks
+      run: |
+        echo "🏃 Running compile-time benchmarks"
+        
+        # Measure compilation time
+        time_file="benchmark_results.txt"
+        echo "Compilation Time Benchmarks" > $time_file
+        echo "===========================" >> $time_file
+        
+        for std in 17 20; do
+          echo "C++${std} compilation time:" >> $time_file
+          (time cmake -B build-bench-${std} \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_CXX_STANDARD=${std} \
+                      -DTRLC_PLATFORM_BUILD_TESTS=OFF >/dev/null 2>&1) 2>> $time_file
+          echo "" >> $time_file
+        done
+        
+        cat $time_file
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark_results.txt
+
+  #============================================================================
+  # Integration and Packaging Tests
+  #============================================================================
+  test-packaging:
+    name: Test Package Installation
+    runs-on: ubuntu-22.04
+    needs: test-matrix
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Test CMake package installation
+      run: |
+        # Install the package
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRLC_PLATFORM_BUILD_TESTS=OFF
+        cmake --build build
+        sudo cmake --install build --prefix /usr/local
+        
+        # Test finding the package
+        cat > test_find_package.cmake << 'EOF'
+        cmake_minimum_required(VERSION 3.16)
+        project(test_find_package CXX)
+        
+        find_package(trlc-platform REQUIRED)
+        
+        add_executable(test_app test_app.cpp)
+        target_link_libraries(test_app trlc::platform)
+        EOF
+        
+        cat > test_app.cpp << 'EOF'
+        #include <trlc/platform/core.hpp>
+        #include <iostream>
+        
+        int main() {
+            auto report = trlc::platform::createPlatformReport();
+            std::cout << "Package installation test successful!" << std::endl;
+            std::cout << report.generateSummary() << std::endl;
+            return 0;
+        }
+        EOF
+        
+        cmake -B test_install -f test_find_package.cmake
+        cmake --build test_install
+        ./test_install/test_app
+
+  #============================================================================
+  # Release Validation (on release tags)
+  #============================================================================
+  release-validation:
+    name: Release Validation
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'release'
+    needs: [test-matrix, documentation, test-examples, test-packaging]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Validate release version
+      run: |
+        # Extract version from CMakeLists.txt
+        cmake_version=$(grep "VERSION" CMakeLists.txt | head -1 | sed 's/.*VERSION \([0-9.]*\).*/\1/')
+        
+        # Extract version from git tag
+        tag_version=${GITHUB_REF#refs/tags/v}
+        
+        echo "CMake version: $cmake_version"
+        echo "Git tag version: $tag_version"
+        
+        if [ "$cmake_version" != "$tag_version" ]; then
+          echo "❌ Version mismatch between CMakeLists.txt ($cmake_version) and git tag ($tag_version)"
+          exit 1
+        fi
+        
+        echo "✅ Version validation passed"
+
+    - name: Create release artifacts
+      run: |
+        # Create source package
+        git archive --format=tar.gz --prefix=trlc-platform-${GITHUB_REF#refs/tags/v}/ HEAD > trlc-platform-${GITHUB_REF#refs/tags/v}.tar.gz
+        
+        # Create header-only package
+        mkdir -p trlc-platform-headers-${GITHUB_REF#refs/tags/v}
+        cp -r include/* trlc-platform-headers-${GITHUB_REF#refs/tags/v}/
+        tar -czf trlc-platform-headers-${GITHUB_REF#refs/tags/v}.tar.gz trlc-platform-headers-${GITHUB_REF#refs/tags/v}
+
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-artifacts
+        path: |
+          *.tar.gz
+
+  #============================================================================
+  # Final Status Report
+  #============================================================================
+  ci-status:
+    name: CI/CD Status Summary
+    runs-on: ubuntu-22.04
+    needs: [code-quality, test-matrix, test-architectures, test-compiler-versions, test-examples, documentation, benchmarks, test-packaging]
+    if: always()
+    
+    steps:
+    - name: Generate status report
+      run: |
+        echo "🚀 TRLC Platform CI/CD Pipeline Results"
+        echo "========================================"
+        echo ""
+        echo "📊 Job Status Summary:"
+        echo "  Code Quality:           ${{ needs.code-quality.result }}"
+        echo "  Cross-Platform Tests:   ${{ needs.test-matrix.result }}"
+        echo "  Architecture Tests:     ${{ needs.test-architectures.result }}"
+        echo "  Compiler Tests:         ${{ needs.test-compiler-versions.result }}"
+        echo "  Examples:               ${{ needs.test-examples.result }}"
+        echo "  Documentation:          ${{ needs.documentation.result }}"
+        echo "  Benchmarks:             ${{ needs.benchmarks.result }}"
+        echo "  Packaging:              ${{ needs.test-packaging.result }}"
+        echo ""
+        
+        # Check if any critical jobs failed
+        if [[ "${{ needs.code-quality.result }}" == "failure" || 
+              "${{ needs.test-matrix.result }}" == "failure" || 
+              "${{ needs.documentation.result }}" == "failure" ]]; then
+          echo "❌ Critical jobs failed - Pipeline FAILED"
+          exit 1
+        else
+          echo "✅ All critical jobs passed - Pipeline SUCCEEDED"
+        fi
