@@ -282,13 +282,13 @@ jobs:
         retention-days: 30
 
   #======================================
-  # Create GitHub Release
+  # Create GitHub Release (Manual Trigger Only)
   #======================================
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
     needs: [validate-release, build-artifacts]
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     
     steps:
     - name: Checkout repository
@@ -394,7 +394,7 @@ jobs:
         **Note:** This is a header-only library requiring C++17 or later.
         EOF
 
-    - name: Create or update release
+    - name: Create new release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.RELEASE_TAG }}
@@ -403,7 +403,147 @@ jobs:
         files: release-assets/*
         prerelease: ${{ needs.validate-release.outputs.is-prerelease == 'true' }}
         draft: false
-        generate_release_notes: true
+        generate_release_notes: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Organize release assets
+      run: |
+        mkdir -p release-assets
+        
+        # Move all archives and checksums to release directory
+        find artifacts/ -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" | \
+        while read file; do
+          cp "$file" release-assets/
+        done
+        
+        # List all release assets
+        echo "📦 Release assets:"
+        ls -la release-assets/
+
+    - name: Generate release notes
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        cat > release-notes.md << EOF
+        # TRLC Platform Library v$version
+        
+        ## 📋 Release Information
+        
+        - **Version:** $version
+        - **Release Type:** ${{ needs.validate-release.outputs.is-prerelease == 'true' && 'Pre-release' || 'Stable Release' }}
+        - **Build Date:** $(date -u)
+        - **Commit:** ${{ github.sha }}
+        
+        ## 🚀 What's New
+        
+        <!-- Add release notes here -->
+        
+        ## 📦 Downloads
+        
+        ### Source Code
+        - **Full Source:** \`trlc-platform-$version-source.tar.gz\`
+        - **Headers Only:** \`trlc-platform-headers-$version.tar.gz\`
+        
+        ### Binary Packages
+        - **Linux:** \`trlc-platform-$version-Linux.tar.gz\`
+        - **Windows:** \`trlc-platform-$version-Windows.zip\`
+        - **macOS:** \`trlc-platform-$version-macOS.tar.gz\`
+        
+        ## 🔐 Verification
+        
+        All release assets include SHA256 checksums for verification:
+        
+        \`\`\`bash
+        # Verify download integrity
+        sha256sum -c *.sha256
+        \`\`\`
+        
+        ## 🛠️ Installation
+        
+        ### Header-Only Usage
+        \`\`\`cpp
+        #include "trlc/platform/core.hpp"
+        
+        constexpr auto arch = trlc::platform::getCpuArchitecture();
+        \`\`\`
+        
+        ### CMake Integration
+        \`\`\`cmake
+        find_package(trlc-platform REQUIRED)
+        target_link_libraries(your_target trlc::platform)
+        \`\`\`
+        
+        ## 🔍 What's Included
+        
+        - ✅ **Compiler Detection:** GCC, Clang, MSVC, Intel compilers
+        - ✅ **Platform Detection:** Windows, Linux, macOS, BSD, mobile platforms
+        - ✅ **Architecture Detection:** x86, ARM, MIPS, PowerPC, RISC-V, SPARC
+        - ✅ **Feature Detection:** C++ language features, SIMD capabilities
+        - ✅ **Zero Runtime Overhead:** All detection at compile time
+        - ✅ **Thread Safe:** Purely constexpr evaluation
+        - ✅ **Standards Compliant:** C++17/20/23 support
+        
+        ## 🧪 Testing
+        
+        This release has been tested on:
+        - **Compilers:** GCC 9+, Clang 10+, MSVC 2019+, Intel 19+
+        - **Standards:** C++17, C++20, C++23
+        - **Platforms:** Linux (x64, ARM64), Windows (x64), macOS (x64, ARM64)
+        - **Architectures:** Native and cross-compilation testing
+        
+        ## 📞 Support
+        
+        - **Issues:** [GitHub Issues](https://github.com/tranglecong/trlc-platform/issues)
+        - **Examples:** [Usage Examples](https://github.com/tranglecong/trlc-platform/tree/main/examples)
+        
+        ---
+        
+        **Note:** This is a header-only library requiring C++17 or later.
+        EOF
+
+  #======================================
+  # Upload Assets to Existing Release  
+  #======================================
+  upload-assets:
+    name: Upload Assets to Release
+    runs-on: ubuntu-22.04
+    needs: [validate-release, build-artifacts]
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Organize release assets
+      run: |
+        mkdir -p release-assets
+        
+        # Move all archives and checksums to release directory
+        find artifacts/ -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" | \
+        while read file; do
+          cp "$file" release-assets/
+        done
+        
+        # List all release assets
+        echo "📦 Release assets:"
+        ls -la release-assets/
+
+    - name: Upload assets to existing release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        files: release-assets/*
+        fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -413,8 +553,11 @@ jobs:
   post-release:
     name: Post-Release Tasks
     runs-on: ubuntu-22.04
-    needs: [validate-release, create-release]
-    if: needs.validate-release.outputs.is-prerelease == 'false'
+    needs: [validate-release, create-release, upload-assets]
+    if: |
+      always() && 
+      needs.validate-release.outputs.is-prerelease == 'false' && 
+      (needs.create-release.result == 'success' || needs.upload-assets.result == 'success')
     
     steps:
     - name: Checkout repository
