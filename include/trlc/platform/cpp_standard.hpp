@@ -102,23 +102,28 @@ namespace detail {
  * @return CppStandard enum value
  */
 constexpr CppStandard detectCppStandard() noexcept {
-#ifdef __cplusplus
-    #if __cplusplus >= 202600L
-    return CppStandard::cpp_26;
-    #elif __cplusplus >= 202302L
-    return CppStandard::cpp_23;
-    #elif __cplusplus >= 202002L
-    return CppStandard::cpp_20;
-    #elif __cplusplus >= 201703L
-    return CppStandard::cpp_17;
-    #elif __cplusplus >= 201402L || __cplusplus >= 201103L || __cplusplus >= 199711L
-    return CppStandard::cpp_pre_17;
-    #else
-    return CppStandard::cpp_unknown;
-    #endif
+    // Use _MSVC_LANG for MSVC, __cplusplus for others
+#if defined(_MSVC_LANG)
+    constexpr long cpp_version = _MSVC_LANG;
+#elif defined(__cplusplus)
+    constexpr long cpp_version = __cplusplus;
 #else
-    return CppStandard::cpp_unknown;
+    constexpr long cpp_version = 0L;
 #endif
+
+    if (cpp_version >= 202600L) {
+        return CppStandard::cpp_26;
+    } else if (cpp_version >= 202302L) {
+        return CppStandard::cpp_23;
+    } else if (cpp_version >= 202002L) {
+        return CppStandard::cpp_20;
+    } else if (cpp_version >= 201703L) {
+        return CppStandard::cpp_17;
+    } else if (cpp_version >= 201402L || cpp_version >= 201103L || cpp_version >= 199711L) {
+        return CppStandard::cpp_pre_17;
+    } else {
+        return CppStandard::cpp_unknown;
+    }
 }
 
 /**

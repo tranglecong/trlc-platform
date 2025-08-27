@@ -27,12 +27,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>  // For std::this_thread::yield
 #include <type_traits>
-
-// Platform-specific intrinsics
-#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
-    #include <intrin.h>  // For __mm_pause on MSVC
-#endif
 
 // Include all platform detection headers in dependency order
 #include "trlc/platform/architecture.hpp"
@@ -396,22 +392,8 @@ inline void initializePlatform() noexcept {
             expected, true, std::memory_order_acq_rel)) {
         // Another thread is initializing, wait for completion
         while (!detail::g_platform_initialized.load(std::memory_order_acquire)) {
-// Busy wait with yield hint
-#if defined(_WIN32)
-    #if defined(_MSC_VER)
-            __mm_pause();  // Intel x86 pause instruction
-    #else
+            // Use standard thread yield instead of platform-specific intrinsics
             std::this_thread::yield();
-    #endif
-#elif defined(__GNUC__) || defined(__clang__)
-    #if defined(__x86_64__) || defined(__i386__)
-            __builtin_ia32_pause();  // Intel x86 pause instruction
-    #else
-            std::this_thread::yield();
-    #endif
-#else
-            std::this_thread::yield();
-#endif
         }
         return;
     }
