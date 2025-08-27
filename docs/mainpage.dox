@@ -80,7 +80,7 @@
  * }
  * 
  * // Comprehensive platform report
- * auto report = trlc::platform::printPlatformReport();
+ * auto report = trlc::platform::getPlatformReport();
  * std::cout << report.generateReport() << std::endl;
  * @endcode
  * 
