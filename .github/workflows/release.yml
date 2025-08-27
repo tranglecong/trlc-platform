@@ -181,24 +181,28 @@ jobs:
         version="${{ needs.validate-release.outputs.version }}"
         archive_name="trlc-platform-$version-source"
         
-        # Create source archive excluding build artifacts and git
-        if [ "${{ matrix.archive }}" = "zip" ]; then
-          # Windows - create ZIP
-          powershell -Command "Compress-Archive -Path . -DestinationPath $archive_name.zip -Exclude build,.git,.cache,*.zip,*.tar.gz"
+        # Create clean source copy first
+        mkdir src-archive-tmp
+        
+        # Copy files excluding build artifacts and git
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          # Windows: Use robocopy for selective copy
+          robocopy . src-archive-tmp /E /XD build .git .cache /XF "*.zip" "*.tar.gz" || true
+          cd src-archive-tmp && powershell -Command "Compress-Archive -Path * -DestinationPath '../$archive_name.zip'" && cd ..
         else
           # Linux/macOS - create tar.gz
-          # Copy source to a new directory to avoid archiving changing files
-          mkdir src-archive-tmp
           if command -v rsync >/dev/null 2>&1; then
             rsync -av --exclude build --exclude .git --exclude .cache --exclude '*.zip' --exclude '*.tar.gz' ./ src-archive-tmp/
           else
             cp -r . src-archive-tmp/
             rm -rf src-archive-tmp/build src-archive-tmp/.git src-archive-tmp/.cache
-            find src-archive-tmp/ -name "*.zip" -o -name "*.tar.gz" -delete
+            find src-archive-tmp/ -name "*.zip" -o -name "*.tar.gz" -delete 2>/dev/null || true
           fi
           tar -czf "$archive_name.tar.gz" -C src-archive-tmp .
-          rm -rf src-archive-tmp
         fi
+        
+        # Cleanup
+        rm -rf src-archive-tmp
 
     - name: Create header-only package
       shell: bash
@@ -209,13 +213,13 @@ jobs:
         # Create header-only package
         mkdir -p "$headers_name"
         if [ -d "include" ]; then
-          cp -r include/* "$headers_name/"
+          cp -r include/* "$headers_name/" 2>/dev/null || true
         fi
         [ -f "README.md" ] && cp "README.md" "$headers_name/" || true
         [ -f "LICENSE" ] && cp "LICENSE" "$headers_name/" || true
         
         if [ "${{ matrix.archive }}" = "zip" ]; then
-          powershell -Command "Compress-Archive -Path '$headers_name' -DestinationPath '$headers_name.zip'"
+          cd "$headers_name" && powershell -Command "Compress-Archive -Path * -DestinationPath '../$headers_name.zip'" && cd ..
         else
           tar -czf "$headers_name.tar.gz" "$headers_name"
         fi
