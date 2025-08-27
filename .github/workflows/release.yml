@@ -10,6 +10,11 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: write
+  actions: read
+  checks: read
+
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
@@ -290,6 +295,9 @@ jobs:
     needs: [validate-release, build-artifacts]
     if: github.event_name == 'workflow_dispatch'
     
+    permissions:
+      contents: write
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -517,6 +525,9 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [validate-release, build-artifacts]
     if: github.event_name == 'release'
+    
+    permissions:
+      contents: write
     
     steps:
     - name: Download all artifacts
