@@ -1,6 +1,11 @@
 # TRLC Platform Library v1.0.0
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/tranglecong/platform/actions)
+![Linux GCC](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Ubuntu%2022.04%20GCC%2012&label=Linux%20GCC)
+![Linux Clang](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Ubuntu%2022.04%20Clang%2015&label=Linux%20Clang)
+![macOS Clang](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20macOS%2013%20Clang&label=macOS%20Clang)
+![Windows MSVC](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Windows%202022%20MSVC%202022&label=Windows%20MSVC)
+![Windows MinGW](https://img.shields.io/github/actions/workflow/status/tranglecong/trlc-platform/ci.yml?branch=main&job=Test%20on%20Windows%202022%20MinGW&label=Windows%20MinGW)
+
 [![C++ Version](https://img.shields.io/badge/C%2B%2B-17%2F20%2F23-blue)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/tranglecong/platform/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#platform-support)
