@@ -251,51 +251,12 @@ jobs:
         retention-days: 30
 
   #============================================================================
-  # Generate Documentation for Release
-  #============================================================================
-  build-documentation:
-    name: Build Release Documentation
-    runs-on: ubuntu-22.04
-    needs: validate-release
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Install documentation tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y doxygen graphviz
-
-    - name: Generate documentation
-      run: |
-        version="${{ needs.validate-release.outputs.version }}"
-        
-        echo "📚 Generating documentation for v$version"
-        
-        # Generate docs
-        ./generate_docs.sh --clean
-        
-        # Create documentation archive
-        cd docs/generated
-        tar -czf "../../trlc-platform-docs-$version.tar.gz" html/
-        cd ../..
-
-    - name: Upload documentation
-      uses: actions/upload-artifact@v4
-      with:
-        name: documentation-release
-        path: |
-          trlc-platform-docs-*.tar.gz
-        retention-days: 30
-
-  #============================================================================
   # Create GitHub Release
   #============================================================================
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
-    needs: [validate-release, build-artifacts, build-documentation]
+    needs: [validate-release, build-artifacts]
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     
     steps:
@@ -352,7 +313,7 @@ jobs:
         
         ### Documentation
         - **API Documentation:** \`trlc-platform-docs-$version.tar.gz\`
-        - **Online Documentation:** [View on GitHub Pages](https://your-org.github.io/trlc-platform/)
+        - **Online Documentation:** [View on GitHub Pages](https://tranglecong.github.io/trlc-platform/)
         
         ## 🔐 Verification
         
@@ -405,9 +366,9 @@ jobs:
         
         ## 📞 Support
         
-        - **Issues:** [GitHub Issues](https://github.com/your-org/trlc-platform/issues)
-        - **Documentation:** [API Reference](https://your-org.github.io/trlc-platform/)
-        - **Examples:** [Usage Examples](https://github.com/your-org/trlc-platform/tree/main/examples)
+        - **Issues:** [GitHub Issues](https://github.com/tranglecong/trlc-platform/issues)
+        - **Documentation:** [API Reference](https://tranglecong.github.io/trlc-platform/)
+        - **Examples:** [Usage Examples](https://github.com/tranglecong/trlc-platform/tree/main/examples)
         
         ---
         
@@ -458,7 +419,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔗 **Links:**" >> $GITHUB_STEP_SUMMARY
         echo "- 🚀 [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})" >> $GITHUB_STEP_SUMMARY
-        echo "- 📖 [Documentation](https://your-org.github.io/trlc-platform/)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📖 [Documentation](https://tranglecong.github.io/trlc-platform/)" >> $GITHUB_STEP_SUMMARY
         echo "- 💡 [Examples](https://github.com/${{ github.repository }}/tree/main/examples)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### ✅ **Quality Assurance:**" >> $GITHUB_STEP_SUMMARY
