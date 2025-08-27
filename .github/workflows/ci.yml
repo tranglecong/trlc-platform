@@ -241,7 +241,7 @@ jobs:
           #include <iostream>
 
           int main() {
-              auto report = trlc::platform::createPlatformReport();
+              auto report = trlc::platform::printPlatformReport();
               std::cout << "Package installation test successful!" << std::endl;
               std::cout << report.generateSummary() << std::endl;
               return 0;
