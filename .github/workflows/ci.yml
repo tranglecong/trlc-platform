@@ -230,7 +230,7 @@ jobs:
           cmake_minimum_required(VERSION 3.16)
           project(test_find_package CXX)
 
-          find_package(trlc-platform REQUIRED CMAKE_PREFIX_PATH /usr/local)
+          find_package(trlc-platform REQUIRED)
 
           add_executable(test_app test_app.cpp)
           target_link_libraries(test_app trlc::platform)
@@ -248,7 +248,7 @@ jobs:
           }
           EOF
 
-          cmake -B test_install -S .
+          cmake -B test_install -S . -DCMAKE_PREFIX_PATH=/usr/local
           cmake --build test_install
           ./test_install/test_app
 
